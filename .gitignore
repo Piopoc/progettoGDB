@@ -4,3 +4,22 @@ data/raw/*
 
 # Secrets
 .env
+
+# Virtual environment
+.venv
+venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
