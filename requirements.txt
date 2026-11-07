@@ -3,3 +3,8 @@ jupyter==1.1.1
 pandas==3.1.0
 python-dotenv==1.2.4
 rdflib==7.6.0
+pyoxigraph==0.5.11
+numpy==1.27.5
+jsonschema
+httpx
+pytest
