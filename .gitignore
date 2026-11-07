@@ -1,6 +1,6 @@
 # Ignore big data but keep the directory
-data/raw/*
-!data/raw/.gitkeep
+data/games/*
+data/fims/*
 
 # Secrets
 .env
