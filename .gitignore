@@ -4,6 +4,7 @@ data/films/*
 
 # Secrets
 .env
+!.env.example
 
 # Virtual environment
 .venv
