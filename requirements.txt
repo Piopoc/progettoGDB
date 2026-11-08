@@ -4,7 +4,7 @@ pandas==3.1.0
 python-dotenv==1.2.4
 rdflib==7.6.0
 pyoxigraph==0.5.11
-numpy==1.27.5
-jsonschema
-httpx
-pytest
+httpx==0.28.1
+jsonschema==4.26.0
+numpy==2.5.4
+pytest==9.2.0
