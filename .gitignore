@@ -1,6 +1,6 @@
 # Ignore big data but keep the directory
 data/games/*
-data/fims/*
+data/films/*
 
 # Secrets
 .env
