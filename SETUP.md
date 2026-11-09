@@ -9,11 +9,11 @@ Guida per configurare il progetto su Linux, macOS e Windows. Tempo stimato: 45 m
 ## 0. Prerequisiti
 
 - **Git**
-- **Python 3.12 o superiore.** Verifica: `python3 --version` (Linux/macOS) oppure `py --version` (Windows). La procedura è stata provata con Python 3.14 e `pyoxigraph 0.5.11`. Per `fastembed` (usato solo dal blocking, fase M2/M3) non è verificato che esista un pacchetto per tutte le versioni di Python.
+- **Python 3.12 o superiore.** Verifica: `python3 --version` (Linux/macOS) oppure `py --version` (Windows). La procedura originale era stata provata con Python 3.14 e `pyoxigraph 0.5.11`; passando a GraphDB, `pyoxigraph` non serve per interrogare il database. Per `fastembed` (usato solo dal blocking, fase M2/M3) non è verificato che esista un pacchetto per tutte le versioni di Python.
 - Accesso al repository (SSH configurato oppure token GitHub)
-- **Un engine** (ne basta uno): **Oxigraph** tramite `pyoxigraph 0.5.11`, scelto dal gruppo. GraphDB resta un possibile secondo engine, più avanti.
+- **Un engine** (ne basta uno): **GraphDB Free 11.5.0**, scelto dal gruppo, con licenza Free e Workbench su `http://localhost:7200`. Per sviluppare funzioni Java personalizzate servono anche **JDK 21** e **Maven** (non necessari per importare/interrogare RDF).
 - Un **server di modelli locale** con indirizzo compatibile OpenAI: Unsloth Studio (usato dal gruppo), Ollama o `llama-server` di llama.cpp
-- Pacchetto dati **games** (da Moodle/Drive del corso), che contiene anche i loader e il checker
+- Pacchetto dati **films** (da Moodle/Drive del corso), che contiene anche i loader e il checker
 
 ## 1. Clona il repository
 
@@ -74,7 +74,7 @@ Windows (PowerShell)
 python -m pip freeze | Select-String -Pattern "^(numpy|fastembed|jsonschema|httpx|pytest)=="
 ```
 
-Copia le righe stampate in `requirements.txt` al posto dei nomi senza versione. Non incollare tutto l'output di `pip freeze`. Dopo un commit, i compagni rieseguono `python -m pip install -r requirements.txt`.
+Copia le righe stampate in `requirements.txt` al posto dei nomi senza versione. Non incollare tutto l'output di `pip freeze`. Dopo un commit, i compagni rieseguono `python -m pip install -r requirements.txt`. Se `requirements.txt` include ancora `pyoxigraph`, verificare prima di rimuoverlo che nessun altro script lo utilizzi.
 
 ## 4. Registra il kernel per Jupyter
 
@@ -111,15 +111,18 @@ LOCAL_MODEL=unsloth/gemma-4-E2B-it-GGUF
 # Modello a pagamento (passo 8)
 GOOGLE_API_KEY=la_tua_chiave
 
-# Percorsi (relativi alla radice del repository)
-STORE_DEV=data/games/store-dev
-STORE_DEV_GT=data/games/store-dev-gt
+# GraphDB (repository locali; le URL sono proprie di ogni macchina)
+GRAPHDB_URL=http://localhost:7200
+GRAPHDB_REPO_DEV=films-dev
+GRAPHDB_REPO_DEV_GT=films-dev-gt
+GRAPHDB_REPO_EVAL=films-eval
+GRAPHDB_REPO_EVAL_GT=films-eval-gt
 
 # Gateway (da completare dopo il 12 novembre)
 GATEWAY_URL=http://127.0.0.1:8000/v1
 ```
 
-Aggiungi a `.env.example` le stesse variabili con valori vuoti o segnaposto.
+Aggiungi a `.env.example` le stesse variabili con valori vuoti o segnaposto. Per **Ollama**, invece dei valori Unsloth dell'esempio, usa `LOCAL_MODEL_URL=http://localhost:11434/v1`, `LOCAL_MODEL_API_KEY=ollama` (segnaposto, non una vera chiave) e `LOCAL_MODEL=qwen2.5:3b` se è il modello installato.
 
 Controlla che Git ignori `.env` (devono comparire la regola e nessun file nuovo):
 
@@ -136,15 +139,15 @@ Nel progetto ci sono **due cartelle `tools/` diverse**. Non vanno confuse.
 
 | Cartella            | Dove                     | Contenuto                                              | Su Git?                               |
 | ------------------- | ------------------------ | ------------------------------------------------------ | ------------------------------------- |
-| `data/games/tools/` | dentro il pacchetto dati | `load_oxigraph.py`, `load_neo4j.py`, `semops_check.py` | no (`data/games/` è nel `.gitignore`) |
+| `data/films/tools/` | dentro il pacchetto dati | `load_oxigraph.py`, `load_neo4j.py`, `semops_check.py` | no (verificare `data/films/` in `.gitignore`) |
 | `tools/`            | radice del repository    | copia di `semops_check.py` e `prices.example.json`     | sì                                    |
 
-Il pacchetto dati `games` va in `data/games/` e contiene `README.md`, `MANIFEST.sha256`, `dev/`, `eval/` e `tools/`. **Non va su Git.**
+Il pacchetto dati `films` va in `data/films/` e contiene `README.md`, `MANIFEST.sha256`, `dev/`, `eval/` e `tools/`. **Non va su Git.** Verifica che `.gitignore` contenga `data/films/` (e, se usi l’estensione Java, `graphdb-extension/target/`).
 
 Dal materiale del professore si copiano così:
 
 ```text
-data/games/tools/semops_check.py  ->  tools/semops_check.py      (checker, non modificare)
+data/films/tools/semops_check.py  ->  tools/semops_check.py      (checker, non modificare)
 prices.example.json               ->  tools/prices.example.json  (formato del listino prezzi)
 fixtures.py, test_check.py, test_grade.py -> tools/tests/        (facoltativo: test del checker)
 examples/                         ->  docs/examples/             (esempi di run file e key.json, solo riferimento)
@@ -168,7 +171,7 @@ Windows (PowerShell)
 
 ### Verifica l'integrità dei dati (facoltativo)
 
-Dalla cartella `data/games/`:
+Dalla cartella `data/films/`:
 
 Linux
 
@@ -197,57 +200,66 @@ for line in pathlib.Path("MANIFEST.sha256").read_text().splitlines():
 print("Tutti i file corrispondono" if bad == 0 else f"{bad} file diversi")
 ```
 
-L'altro dominio (film) arriva con il pool, il 21 dicembre.
+L'altro dominio (games) arriva con il pool, il 21 dicembre.
 
-### Carica il grafo con Oxigraph
+### Carica il grafo con GraphDB
 
-Servono **due store separati**. Quello senza statement nascoste serve per far girare le query semantiche. Quello con le statement nascoste serve solo per il punteggio e per le answer key. Così si riduce il rischio di leakage.
+Servono **due repository separati per ogni set (dev ed eval)**. Quello senza statement nascoste serve per far girare le query semantiche. Quello con le statement nascoste serve solo per il punteggio e per le answer key. Così si riduce il rischio di leakage.
 
-Gli store nascono nella cartella da cui lanci il comando. Lancia i comandi da `data/games/`, così finiscono in `data/games/store-*` (cartella già ignorata da Git; la regola `store-*/` nel `.gitignore` è una rete di sicurezza).
+1. Installa/avvia **GraphDB Free 11.5.0** (con licenza Free) e apri `http://localhost:7200`.
+2. In **Setup → Repositories → Create new repository → GraphDB Repository**, crea i quattro repository qui sotto. Seleziona **Ruleset: Empty (no inference)** per tutti, disabilita `owl:sameAs` se l'opzione è presente, e mantieni le altre impostazioni coerenti. Il ruleset Empty è una scelta del gruppo per avere una baseline senza inferenza automatica, non un vincolo delle slide.
+3. Seleziona ciascun repository e vai su **Import → User data → Upload RDF files**. Importa i file N-Triples indicati nella tabella nel **default graph**. Non aggiungere `hidden.nt` ai repository usati dagli operatori.
 
-**Con i loader del pacchetto** (stessi comandi su tutti i sistemi, con l'ambiente attivo):
+| Repository | File da importare | Scopo |
+| --- | --- | --- |
+| `films-dev` | `data/films/dev/graph.nt` | Sviluppo, senza risposte nascoste |
+| `films-dev-gt` | `data/films/dev/graph.nt` + `data/films/dev/hidden.nt` | Ground truth sviluppo |
+| `films-eval` | `data/films/eval/graph.nt` | Valutazione, senza risposte nascoste |
+| `films-eval-gt` | `data/films/eval/graph.nt` + `data/films/eval/hidden.nt` | Ground truth valutazione |
 
-```bash
-cd data/games
-python tools/load_oxigraph.py dev store-dev                  # senza nascoste: per le query
-python tools/load_oxigraph.py dev store-dev-gt --with-hidden # con nascoste: solo scoring
-python tools/load_oxigraph.py eval store-eval
-python tools/load_oxigraph.py eval store-eval-gt --with-hidden
-cd ../..
+> GraphDB Free consente al massimo cinque repository utilizzabili: con questi quattro rimane uno slot. Non caricare ripetutamente gli stessi file nello stesso repository senza verificarne prima il contenuto.
+
+**Controllo.** Nel pannello **SPARQL** di GraphDB, seleziona un repository alla volta ed esegui:
+
+```sparql
+PREFIX ex: <http://example.org/semop/>
+SELECT (COUNT(DISTINCT ?e) AS ?n)
+WHERE { ?e ex:inSet ex:set-main . }
 ```
 
-**In alternativa ai loader**, `graph.nt` e `hidden.nt` sono N-Triples e si caricano direttamente (verificare il nome dei parametri nella documentazione di pyoxigraph 0.5.11):
+Atteso: `1000` in `films-dev` e `films-dev-gt`; `4000` in `films-eval` e `films-eval-gt`.
+
+Nei **soli** repository `-gt`, puoi verificare anche la ground truth espansa della Q1 (Seconda guerra mondiale):
+
+```sparql
+PREFIX ex: <http://example.org/semop/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+SELECT (COUNT(DISTINCT ?e) AS ?n)
+WHERE {
+  ?e ex:inSet ex:set-main ;
+     wdt:P921/(wdt:P279|wdt:P361)* wd:Q362 .
+}
+```
+
+Atteso: `200` in `films-dev-gt`, `852` in `films-eval-gt`. Usare `eval` solo per le verifiche iniziali e per la valutazione finale: non calibrare i modelli su quel set.
+
+**Test Python → GraphDB** (dalla radice del repository, con `.venv` attivo; va bene anche in un notebook):
 
 ```python
-import pyoxigraph as ox
-store = ox.Store("data/games/store-dev")
-store.bulk_load(path="data/games/dev/graph.nt", format=ox.RdfFormat.N_TRIPLES)
-gt = ox.Store("data/games/store-dev-gt")
-gt.bulk_load(path="data/games/dev/graph.nt", format=ox.RdfFormat.N_TRIPLES)
-gt.bulk_load(path="data/games/dev/hidden.nt", format=ox.RdfFormat.N_TRIPLES)
+import os, httpx
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv(usecwd=True))
+endpoint = os.environ["GRAPHDB_URL"].rstrip("/") + "/repositories/" + os.environ["GRAPHDB_REPO_DEV"]
+query = """PREFIX ex: <http://example.org/semop/>
+SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE { ?e ex:inSet ex:set-main . }"""
+r = httpx.post(endpoint, data={"query": query},
+               headers={"Accept": "application/sparql-results+json"}, timeout=30)
+r.raise_for_status()
+print(r.json()["results"]["bindings"][0]["n"]["value"])  # atteso: 1000
 ```
 
-**Controllo.** Dopo il caricamento verifica che le triple `ex:inSet` ci siano (nel notebook, i percorsi sono relativi a `notebooks/`):
-
-```python
-import pyoxigraph as ox
-store = ox.Store.read_only("../data/games/store-dev")
-q = """PREFIX ex: <http://example.org/semop/>
-SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE { ?e ex:inSet ex:set-main }"""
-print(list(store.query(q))[0]["n"].value)   # atteso: 1000
-```
-
-Se stampa 0, le triple `ex:inSet` non sono in `graph.nt` e bisogna capire dove stanno.
-
-### Carica il grafo con Neo4j (solo se si sceglie Cypher)
-
-Copia `dev/*.csv` nella cartella `import` di Neo4j, poi:
-
-```bash
-python tools/load_neo4j.py bolt://localhost:7687 neo4j <password> --import-dir=<cartella import> [--with-hidden]
-```
-
-I nodi hanno le etichette `:Item`, `:VideoGame` o `:VideoGameSeries`, e un'etichetta per ogni insieme (`:Main`, `:Q4Input`, `:Q6Left`, `:Q6Right`, `:Q7Left`, `:Q7Right`, `:PoolMain`, `:PoolQ7Left`). Le relazioni hanno il nome della proprietà (`neo4j_rel_type` in `statements.csv`).
+**Estensione Java (facoltativa in questa fase).** Per compilare una funzione RDF4J servono Java 21 e Maven. Se i sorgenti di `graphdb-extension/` sono presenti nel repository, da quella cartella esegui `mvn clean package`, copia `target/graphdb-extension-0.1.0.jar` nella cartella `lib/` della distribuzione GraphDB e riavvia GraphDB. La prova con `sem:echo` verifica solo che il JAR venga caricato; **non** implementa gli operatori semantici. Non mettere `target/` su Git. L'integrazione con il gateway resta al passo 9.
 
 ## 7. Modello locale per lo sviluppo
 
@@ -258,7 +270,7 @@ Durante lo sviluppo si usa un modello piccolo sulla propria macchina. Non si spe
 1. Avvia Unsloth Studio. L'interfaccia web è su `http://localhost:8889` (la porta può cambiare: controlla l'indirizzo mostrato all'avvio).
 2. Carica un modello GGUF dall'interfaccia. Modelli provati: `unsloth/gemma-4-E2B-it-GGUF` (2,3 GB, molto compresso, veloce, risposte semplici) e `unsloth/Qwen3.5-9B-MTP-GGUF` (4,5 GB, più capace). Il campo `loaded` di `/v1/models` dice quale è caricato.
 3. Il server richiede un **token Bearer**. Crea una chiave API dalle impostazioni dell'interfaccia (se non trovi la voce, guarda `http://localhost:8889/docs`: la rotta `/api/auth/api-keys` esiste). La chiave si vede una sola volta: copiala subito nel `.env` come `LOCAL_MODEL_API_KEY`.
-4. Verifica con una cella del notebook (vedi sotto).
+4. Verifica con `notebooks/00_check_environment.ipynb` (vedi passo 10).
 
 ### Opzione B: Ollama
 
@@ -267,7 +279,7 @@ ollama pull <modello>        # un modello quantizzato da 0.8 a 9 miliardi di par
 ollama run <modello> "ciao"  # prova rapida
 ```
 
-Indirizzo tipico: `http://localhost:11434/v1`. Nessuna chiave: lascia `LOCAL_MODEL_API_KEY` con un valore qualsiasi.
+Indirizzo tipico: `http://localhost:11434/v1`. Nessuna vera chiave locale: usa `LOCAL_MODEL_API_KEY=ollama` come segnaposto. Esempio verificato su macOS: `ollama pull qwen2.5:3b`, poi `LOCAL_MODEL=qwen2.5:3b` nel `.env`.
 
 ### Opzione C: llama-server (llama.cpp)
 
@@ -279,6 +291,8 @@ Indirizzo: `http://localhost:8080/v1`. Espone anche le log-probabilità, utili 
 
 ### Test del server locale (cella del notebook)
 
+Il notebook `notebooks/00_check_environment.ipynb` esegue questo controllo leggendo `LOCAL_MODEL_URL`, `LOCAL_MODEL_API_KEY` e `LOCAL_MODEL` dal `.env`; funziona con Ollama o Unsloth Studio.
+
 ```python
 import os, httpx
 from dotenv import load_dotenv, find_dotenv
@@ -287,24 +301,23 @@ URL = os.getenv("LOCAL_MODEL_URL")
 H = {"Authorization": f"Bearer {os.getenv('LOCAL_MODEL_API_KEY')}"}
 MODEL = os.getenv("LOCAL_MODEL")
 
-print(httpx.get(URL + "/models", headers=H, timeout=10).json())   # modelli e campo "loaded"
+print(httpx.get(URL + "/models", headers=H, timeout=10).json())   # lista modelli; Unsloth può indicare "loaded"
 
-schema = {"name": "answer", "schema": {"type": "object",
-          "properties": {"answer": {"type": "boolean"}}, "required": ["answer"]}}
 casi = {
-    "positivo (atteso true)": "Super Mario Bros. is a 1985 side-scrolling game where the player jumps across platforms.",
-    "negativo (atteso false)": "Gran Turismo is a 1997 racing game where the player drives licensed cars on circuits.",
+    "positivo (atteso true)": "Dunkirk follows Allied soldiers trapped on the beaches of France in 1940 during World War II.",
+    "negativo (atteso false)": "A romantic comedy follows two people falling in love in modern-day Paris.",
 }
 for nome, testo in casi.items():
     body = {"model": MODEL, "temperature": 0, "max_tokens": 300,
-            "messages": [{"role": "user", "content": f"Criterion: the game is a platformer\nInput: {testo}"}],
-            "response_format": {"type": "json_schema", "json_schema": schema}}
+            "messages": [{"role": "system", "content": 'Reply only with JSON containing a boolean field named "answer".'},
+                         {"role": "user", "content": f"Criterion: the film deals with the Second World War\nInput: {testo}"}],
+            "response_format": {"type": "json_object"}}
     r = httpx.post(URL + "/chat/completions", json=body, headers=H, timeout=120)
     print(nome, "->", r.status_code)
     print("   ", r.json()["choices"][0]["message"]["content"] if r.status_code == 200 else r.text[:300])
 ```
 
-Esito atteso: `200` e `{"answer": true}` / `{"answer": false}`. Questo test mostra che il percorso funziona, non quanto il modello sia buono sui dati veri: con modelli molto compressi aspettatevi errori e qualche risposta fuori formato (parse failure).
+Esito atteso: `200` e `{"answer": true}` / `{"answer": false}`. Il formato JSON va controllato: il campo `answer` deve essere booleano. Questo test mostra che il percorso funziona, non quanto il modello sia buono sui dati veri: con modelli molto compressi aspettatevi errori e qualche risposta fuori formato (parse failure).
 
 ## 8. Modello a pagamento: Google (da usare solo quando la pipeline funziona)
 
@@ -364,8 +377,8 @@ MODEL = "nome-del-modello-flash"
 
 body = {"model": MODEL, "temperature": 0, "max_tokens": 300,
         "messages": [{"role": "user", "content":
-            "Criterion: the game is a platformer\n"
-            "Input: Super Mario Bros. is a 1985 side-scrolling game where the player jumps across platforms."}],
+            "Criterion: the film deals with the Second World War\n"
+            "Input: Dunkirk follows Allied soldiers trapped on the beaches of France in 1940 during World War II."}],
         "response_format": {"type": "json_schema", "json_schema": {
             "name": "answer", "schema": {"type": "object",
             "properties": {"answer": {"type": "boolean"}}, "required": ["answer"]}}}}
@@ -391,29 +404,27 @@ Dalla radice del repository, con l'ambiente attivo:
 jupyter notebook
 ```
 
-I notebook stanno in `notebooks/`. Crea `notebooks/00_check_ambiente.ipynb`, seleziona il kernel **Python (progetto GDB)** ed esegui:
+I notebook stanno in `notebooks/`. Seleziona `notebooks/00_check_ambiente.ipynb`, seleziona il kernel **Python (progetto GDB)** ed esegui.
 
-```python
-import sys, os
-from dotenv import load_dotenv, find_dotenv
-import pandas, pyoxigraph
+Il notebook controlla:
 
-load_dotenv(find_dotenv(usecwd=True))     # il notebook parte da notebooks/, il .env sta nella radice
-print("Python:", sys.executable)          # deve contenere .venv
-print("pandas:", pandas.__version__, "| pyoxigraph:", pyoxigraph.__version__)
-for v in ["LOCAL_MODEL_URL", "LOCAL_MODEL_API_KEY", "GOOGLE_API_KEY"]:
-    print(v, "presente:", bool(os.getenv(v)))
-```
+1. **Ambiente Python e `.env`** — stampa il percorso di Python, le versioni di `pandas` e `httpx` e la presenza delle variabili di configurazione (non stampa le chiavi). `GOOGLE_API_KEY` è facoltativa durante lo sviluppo locale.
+2. **Connessione a GraphDB** — usa `GRAPHDB_URL` e `GRAPHDB_REPO_DEV` per interrogare `films-dev`; il risultato atteso per il main set è **1000**.
+3. **Server locale** — interroga l'endpoint `LOCAL_MODEL_URL/models` di Ollama o Unsloth Studio, secondo il `.env` personale.
+4. **Test del modello locale** — invia due esempi *films* con il criterio Q1 (Seconda guerra mondiale), verifica che la risposta sia JSON e che `answer` sia un booleano. Non sono esempi del benchmark.
+5. **Google (facoltativo)** — conserva i controlli per la chiave e i modelli Google. Il test che genera testo con un modello a pagamento è **disabilitato di default** (`ESEGUI_TEST_GOOGLE_A_PAGAMENTO = False`): abilitalo solo quando serve.
+
+Per eseguire il notebook dalla radice del repository, avvia `jupyter notebook`, apri `notebooks/00_check_environment.ipynb` e seleziona il kernel corretto. In alternativa aprilo direttamente in VS Code con l'estensione Jupyter.
 
 Poi, quando il gateway è pronto, esegui il **test M1**: una chiamata semantica da una query, attraverso il gateway, fino al modello locale e ritorno, su dieci entità.
 
 Infine controlla il checker (dalla radice):
 
 ```bash
-python tools/semops_check.py . --data games=data/games --results eval/results.csv
+python tools/semops_check.py . --data films=data/films --results eval/results.csv
 ```
 
-Con un solo dominio non è verificato che funzioni: il comando del professore usa `films` e `games`.
+Con un solo dominio non è verificato che funzioni: il comando del professore usa `films` e `games`. Se il checker richiede entrambi, eseguirlo solo quando sarà disponibile anche `data/games/`.
 
 ## Problemi comuni
 
@@ -423,7 +434,7 @@ Con un solo dominio non è verificato che funzioni: il comando del professore us
 | Errore su `fastembed` o `onnxruntime`             | Può mancare un pacchetto per la tua versione di Python. Commenta la riga con `#`: serve solo al blocking (M2/M3). Poi usa un ambiente con Python 3.12 o 3.13 |
 | PowerShell non attiva `.venv`                     | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, poi riprova                                                                                           |
 | `presente: False` per una variabile               | Il `.env` non esiste o non è nella radice. Crealo con `cp`/`copy` e riavvia il kernel del notebook                                                           |
-| Il server locale risponde `401 Not authenticated` | Manca il token Bearer: crea la chiave (passo 7) e mettila in `LOCAL_MODEL_API_KEY`                                                                           |
+| Il server Unsloth risponde `401 Not authenticated` | Manca il token Bearer: crea la chiave (passo 7) e mettila in `LOCAL_MODEL_API_KEY`                                                                           |
 | `/v1/models` mostra `loaded: False`               | Carica il modello nell'interfaccia di Unsloth prima della chiamata                                                                                           |
 | Un file di dati compare in `git status`           | Non fare commit. `.gitignore` non toglie file già tracciati: usa `git rm -r --cached <percorso>`                                                             |
 
