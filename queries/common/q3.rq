@@ -1,0 +1,32 @@
+PREFIX ex: <http://example.org/semop/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX schema: <http://schema.org/>
+PREFIX sem: <http://example.org/semop/function/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
+SELECT DISTINCT ?film
+WHERE {
+    {
+        SELECT DISTINCT ?film ?tau
+        WHERE {
+            VALUES ?countries { wd:Q145 wd:Q174193 }
+            ?film ex:inSet ex:set-main ;
+                rdfs:label ?title ;
+                schema:description ?description ;
+                ex:lead ?lead ;
+            	wdt:P57 ?director .
+	        ?director wdt:P27 ?countries.
+
+            # TODO: sostituire con tau effettiva
+            BIND(CONCAT(?title, " ", ?description, " ", ?lead) AS ?tau)
+        }
+        LIMIT 100000
+    }
+
+    FILTER(sem:filter(
+        ?tau,
+        "the film deals with the Second World War",
+        ex:run-q3
+    ))
+}

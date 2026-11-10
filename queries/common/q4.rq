@@ -1,0 +1,33 @@
+PREFIX ex: <http://example.org/semop/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX schema: <http://schema.org/>
+PREFIX sem: <http://example.org/semop/function/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
+SELECT ?film ?predictedGenre
+WHERE {
+    {
+        SELECT DISTINCT ?film ?tau
+        WHERE {
+            ?film ex:inSet ex:set-q4_input ;
+                rdfs:label ?title ;
+                schema:description ?description ;
+                ex:lead ?lead .
+
+            # TODO: sostituire con tau effettiva
+            BIND(CONCAT(?title, " ", ?description, " ", ?lead) AS ?tau)
+        }
+        LIMIT 100000
+    }
+    BIND(
+        "Q130232|Q93204|Q369747|Q188473|Q157443|Q2484376|Q200092|Q471839"
+        AS ?allowedGenres
+    )
+    BIND(sem:classify(
+        ?tau,
+        "the genre that describes the film best",
+        ?allowedGenres,
+        ex:run-q4
+    ) AS ?predictedGenre)
+}

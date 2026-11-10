@@ -1,0 +1,17 @@
+PREFIX ex: <http://example.org/semop/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
+SELECT ?film
+       (GROUP_CONCAT(STR(?genre); separator=" | ") AS ?labels)
+       (COUNT(?genre) AS ?count)
+WHERE {
+    VALUES ?genre {
+        wd:Q130232 wd:Q93204 wd:Q369747 wd:Q188473
+        wd:Q157443 wd:Q2484376 wd:Q200092 wd:Q471839
+    }
+
+    ?film ex:inSet ex:set-q4_input ;
+       wdt:P136 ?genre .
+}
+GROUP BY ?film

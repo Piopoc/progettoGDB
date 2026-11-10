@@ -1,0 +1,12 @@
+PREFIX ex: <http://example.org/semop/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
+SELECT DISTINCT ?film
+WHERE {
+    VALUES ?country { wd:Q145 wd:Q174193 }
+    ?film ex:inSet ex:set-main ;
+        wdt:P57 ?director ;
+        wdt:P921/(wdt:P279|wdt:P361)* wd:Q362 .
+    ?director wdt:P27 ?country .
+}

@@ -1,0 +1,27 @@
+PREFIX ex: <http://example.org/semop/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX schema: <http://schema.org/>
+PREFIX sem: <http://example.org/semop/function/>
+
+SELECT DISTINCT ?film
+WHERE {
+    {
+        SELECT DISTINCT ?film ?tau
+        WHERE {
+            ?film ex:inSet ex:set-main ;
+                  rdfs:label ?title ;
+                  schema:description ?description ;
+                  ex:lead ?lead .
+
+            # TODO: sostituire con tau effettiva
+            BIND(CONCAT(?title, " ", ?description, " ", ?lead) AS ?tau)
+        }
+        LIMIT 100000
+    }
+
+    FILTER(sem:filter(
+        ?tau,
+        "the film deals with time travel",
+        ex:run-q2
+    ))
+}
