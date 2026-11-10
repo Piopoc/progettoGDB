@@ -2,3 +2,4 @@
 - sistemato la repo
 - testato modello locale sul dataset del provato con esito: positivo
 - testato modello tramite API GEMINI con esito: positivo
+- cambiato motore secondo consiglio del professore (da oxigrah a graphdb)
