@@ -2,6 +2,9 @@
 data/games/*
 data/films/*
 
+# Docker
+dokcer-data/
+
 # Secrets
 .env
 !.env.example

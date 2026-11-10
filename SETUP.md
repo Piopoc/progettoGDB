@@ -9,9 +9,9 @@ Guida per configurare il progetto su Linux, macOS e Windows. Tempo stimato: 45 m
 ## 0. Prerequisiti
 
 - **Git**
-- **Python 3.12 o superiore.** Verifica: `python3 --version` (Linux/macOS) oppure `py --version` (Windows). La procedura originale era stata provata con Python 3.14 e `pyoxigraph 0.5.11`; passando a GraphDB, `pyoxigraph` non serve per interrogare il database. Per `fastembed` (usato solo dal blocking, fase M2/M3) non è verificato che esista un pacchetto per tutte le versioni di Python.
+- **Python 3.12 o superiore.** Verifica: `python3 --version` (Linux/macOS) oppure `py --version` (Windows). La procedura è stata provata con Python 3.14. Per `fastembed` (usato solo dal blocking, fase M2/M3) non è verificato che esista un pacchetto per tutte le versioni di Python.
 - Accesso al repository (SSH configurato oppure token GitHub)
-- **Un engine** (ne basta uno): **GraphDB Free 11.5.0**, scelto dal gruppo, con licenza Free e Workbench su `http://localhost:7200`. Per sviluppare funzioni Java personalizzate servono anche **JDK 21** e **Maven** (non necessari per importare/interrogare RDF).
+- **GraphDB Free 11.5.0** (l'engine scelto dal gruppo), con **Docker** oppure installato in locale; la Workbench è su `http://localhost:7200`. Per sviluppare l'estensione Java servono anche **JDK 21** e **Maven** (non servono per importare e interrogare i dati).
 - Un **server di modelli locale** con indirizzo compatibile OpenAI: Unsloth Studio (usato dal gruppo), Ollama o `llama-server` di llama.cpp
 - Pacchetto dati **films** (da Moodle/Drive del corso), che contiene anche i loader e il checker
 
@@ -74,7 +74,7 @@ Windows (PowerShell)
 python -m pip freeze | Select-String -Pattern "^(numpy|fastembed|jsonschema|httpx|pytest)=="
 ```
 
-Copia le righe stampate in `requirements.txt` al posto dei nomi senza versione. Non incollare tutto l'output di `pip freeze`. Dopo un commit, i compagni rieseguono `python -m pip install -r requirements.txt`. Se `requirements.txt` include ancora `pyoxigraph`, verificare prima di rimuoverlo che nessun altro script lo utilizzi.
+Copia le righe stampate in `requirements.txt` al posto dei nomi senza versione. Non incollare tutto l'output di `pip freeze`. Dopo un commit, i compagni rieseguono `python -m pip install -r requirements.txt`.
 
 ## 4. Registra il kernel per Jupyter
 
@@ -122,7 +122,7 @@ GRAPHDB_REPO_EVAL_GT=films-eval-gt
 GATEWAY_URL=http://127.0.0.1:8000/v1
 ```
 
-Aggiungi a `.env.example` le stesse variabili con valori vuoti o segnaposto. Per **Ollama**, invece dei valori Unsloth dell'esempio, usa `LOCAL_MODEL_URL=http://localhost:11434/v1`, `LOCAL_MODEL_API_KEY=ollama` (segnaposto, non una vera chiave) e `LOCAL_MODEL=qwen2.5:3b` se è il modello installato.
+Aggiungi a `.env.example` le stesse variabili con valori vuoti o segnaposto. Per **Ollama**, invece dei valori Unsloth dell'esempio, usa `LOCAL_MODEL_URL=http://localhost:11434/v1`, `LOCAL_MODEL_API_KEY=ollama`(segnaposto, non una vera chiave) e `LOCAL_MODEL=qwen2.5:3b` se è il modello installato.
 
 Controlla che Git ignori `.env` (devono comparire la regola e nessun file nuovo):
 
@@ -137,12 +137,12 @@ Non incollare chiavi in chat, notebook, commit o messaggi. Nel repository non ci
 
 Nel progetto ci sono **due cartelle `tools/` diverse**. Non vanno confuse.
 
-| Cartella            | Dove                     | Contenuto                                              | Su Git?                               |
-| ------------------- | ------------------------ | ------------------------------------------------------ | ------------------------------------- |
-| `data/films/tools/` | dentro il pacchetto dati | `load_oxigraph.py`, `load_neo4j.py`, `semops_check.py` | no (verificare `data/films/` in `.gitignore`) |
-| `tools/`            | radice del repository    | copia di `semops_check.py` e `prices.example.json`     | sì                                    |
+| Cartella            | Dove                     | Contenuto                                                                                   | Su Git?                               |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `data/films/tools/` | dentro il pacchetto dati | `semops_check.py` (i loader `load_*.py` del pacchetto non servono con GraphDB)              | no (`data/films/` è nel `.gitignore`) |
+| `tools/`            | radice del repository    | copia di `semops_check.py` (fornito dal professore, non modificare) e `prices.example.json` | sì                                    |
 
-Il pacchetto dati `films` va in `data/films/` e contiene `README.md`, `MANIFEST.sha256`, `dev/`, `eval/` e `tools/`. **Non va su Git.** Verifica che `.gitignore` contenga `data/films/` (e, se usi l’estensione Java, `graphdb-extension/target/`).
+Il pacchetto dati `films` va in `data/films/` e contiene `README.md`, `MANIFEST.sha256`, `dev/`, `eval/` e `tools/`. **Non va su Git.** Verifica che `.gitignore` contenga `data/films/` (e, se usi l’estensione Java, `graphdb-extension/target/`).
 
 Dal materiale del professore si copiano così:
 
@@ -202,24 +202,47 @@ print("Tutti i file corrispondono" if bad == 0 else f"{bad} file diversi")
 
 L'altro dominio (games) arriva con il pool, il 21 dicembre.
 
+### Avvia GraphDB
+
+Scegli **una** delle due strade. Con tutte e due gli stessi quattro repository e gli stessi controlli valgono uguali.
+
+**Con Docker (consigliata per chi non vuole installare GraphDB).** Il file `docker-compose.yml` nella radice del repository avvia GraphDB. Tre scelte da conoscere:
+
+- **Versione.** L'immagine è `ontotext/graphdb`, con il tag in `GRAPHDB_TAG` (predefinito 10.7.4, quello già provato dal gruppo). Le slide del corso indicano GraphDB 11.5.0, che include RDF4J 5.3.1, la versione contro cui è compilato il `pom.xml`. Prima di sviluppare l'estensione Java, controlla che il tag 11.5.0 esista su Docker Hub e provalo con una **cartella dati nuova** (non riusare quella della 10.7.4: il formato potrebbe non essere compatibile). Controlla anche la versione di Java dentro il container, perché il `pom.xml` compila per Java 21: `docker exec graphdb java -version`.
+- **Dati di GraphDB.** Il volume `GRAPHDB_HOME` (predefinito `docker-data/graphdb-home`, ignorato da Git) è dove GraphDB tiene i repository. Se hai già una cartella dati fuori dalla repo, metti nel `.env``GRAPHDB_HOME=/percorso/assoluto/graphdb-data`. I file lì dentro appartengono a `root` perché li scrive il container: è normale.
+- **File da importare.** Il volume `GRAPHDB_IMPORT` (predefinito `data/films`, in sola lettura) è visibile nella Workbench in **Import → Server files**. Così `dev/graph.nt` ed `eval/graph.nt` si caricano senza passare dal browser.
+
+Comandi, dalla radice del repository:
+
+```bash
+docker compose up -d
+docker compose ps          # il servizio deve risultare in esecuzione
+```
+
+Poi apri `http://localhost:7200`: deve comparire la Workbench.
+
+**Installazione locale.** Scarica GraphDB Free 11.5.0, avvialo e apri `http://localhost:7200`. Il jar dell'estensione si copierà nella cartella `lib/` della distribuzione.
+
+**Licenza.** Le slide del corso avvertono che la valutazione delle query richiede una licenza e che, senza, ogni query fallisce. Con GraphDB 10.7.4 Free, senza file di licenza, il gruppo ha già eseguito query: se passi alla 11.5.0, ripeti la prova con una query qualsiasi dalla Workbench e, se fallisce, annota il messaggio in `docs/log.md`.
+
 ### Carica il grafo con GraphDB
 
-Servono **due repository separati per ogni set (dev ed eval)**. Quello senza statement nascoste serve per far girare le query semantiche. Quello con le statement nascoste serve solo per il punteggio e per le answer key. Così si riduce il rischio di leakage.
+Servono **due repository separati per ogni set (dev ed eval)**. Quello senza statement nascoste serve per far girare le query semantiche. Quello con le statement nascoste serve solo per il punteggio e per le answer key. Così si riduce il rischio di leakage.
 
-1. Installa/avvia **GraphDB Free 11.5.0** (con licenza Free) e apri `http://localhost:7200`.
-2. In **Setup → Repositories → Create new repository → GraphDB Repository**, crea i quattro repository qui sotto. Seleziona **Ruleset: Empty (no inference)** per tutti, disabilita `owl:sameAs` se l'opzione è presente, e mantieni le altre impostazioni coerenti. Il ruleset Empty è una scelta del gruppo per avere una baseline senza inferenza automatica, non un vincolo delle slide.
-3. Seleziona ciascun repository e vai su **Import → User data → Upload RDF files**. Importa i file N-Triples indicati nella tabella nel **default graph**. Non aggiungere `hidden.nt` ai repository usati dagli operatori.
+1. Con GraphDB avviato (sezione precedente), apri `http://localhost:7200`.
+2. In **Setup → Repositories → Create new repository → GraphDB Repository**, crea i quattro repository qui sotto. Seleziona **Ruleset: Empty (no inference)** per tutti, disabilita `owl:sameAs` se l'opzione è presente, e mantieni le altre impostazioni coerenti. Il ruleset Empty è una scelta del gruppo per avere una baseline senza inferenza automatica, non un vincolo delle slide.
+3. Seleziona ciascun repository e vai su **Import → User data → Upload RDF files**. Importa i file N-Triples indicati nella tabella nel **default graph**. Non aggiungere `hidden.nt` ai repository usati dagli operatori.
 
-| Repository | File da importare | Scopo |
-| --- | --- | --- |
-| `films-dev` | `data/films/dev/graph.nt` | Sviluppo, senza risposte nascoste |
-| `films-dev-gt` | `data/films/dev/graph.nt` + `data/films/dev/hidden.nt` | Ground truth sviluppo |
-| `films-eval` | `data/films/eval/graph.nt` | Valutazione, senza risposte nascoste |
-| `films-eval-gt` | `data/films/eval/graph.nt` + `data/films/eval/hidden.nt` | Ground truth valutazione |
+| Repository      | File da importare                                        | Scopo                                |
+| --------------- | -------------------------------------------------------- | ------------------------------------ |
+| `films-dev`     | `data/films/dev/graph.nt`                                | Sviluppo, senza risposte nascoste    |
+| `films-dev-gt`  | `data/films/dev/graph.nt` + `data/films/dev/hidden.nt`   | Ground truth sviluppo                |
+| `films-eval`    | `data/films/eval/graph.nt`                               | Valutazione, senza risposte nascoste |
+| `films-eval-gt` | `data/films/eval/graph.nt` + `data/films/eval/hidden.nt` | Ground truth valutazione             |
 
 > GraphDB Free consente al massimo cinque repository utilizzabili: con questi quattro rimane uno slot. Non caricare ripetutamente gli stessi file nello stesso repository senza verificarne prima il contenuto.
 
-**Controllo.** Nel pannello **SPARQL** di GraphDB, seleziona un repository alla volta ed esegui:
+**Controllo.** Nel pannello **SPARQL** di GraphDB, seleziona un repository alla volta ed esegui:
 
 ```sparql
 PREFIX ex: <http://example.org/semop/>
@@ -227,9 +250,9 @@ SELECT (COUNT(DISTINCT ?e) AS ?n)
 WHERE { ?e ex:inSet ex:set-main . }
 ```
 
-Atteso: `1000` in `films-dev` e `films-dev-gt`; `4000` in `films-eval` e `films-eval-gt`.
+Atteso: `1000` in `films-dev` e `films-dev-gt`; `4000` in `films-eval` e `films-eval-gt`.
 
-Nei **soli** repository `-gt`, puoi verificare anche la ground truth espansa della Q1 (Seconda guerra mondiale):
+Nei **soli** repository `-gt`, puoi verificare anche la ground truth espansa della Q1 (Seconda guerra mondiale):
 
 ```sparql
 PREFIX ex: <http://example.org/semop/>
@@ -242,9 +265,9 @@ WHERE {
 }
 ```
 
-Atteso: `200` in `films-dev-gt`, `852` in `films-eval-gt`. Usare `eval` solo per le verifiche iniziali e per la valutazione finale: non calibrare i modelli su quel set.
+Atteso: `200` in `films-dev-gt`, `852` in `films-eval-gt`. Usare `eval` solo per le verifiche iniziali e per la valutazione finale: non calibrare i modelli su quel set.
 
-**Test Python → GraphDB** (dalla radice del repository, con `.venv` attivo; va bene anche in un notebook):
+**Test Python → GraphDB** (dalla radice del repository, con `.venv` attivo; va bene anche in un notebook):
 
 ```python
 import os, httpx
@@ -259,7 +282,38 @@ r.raise_for_status()
 print(r.json()["results"]["bindings"][0]["n"]["value"])  # atteso: 1000
 ```
 
-**Estensione Java (facoltativa in questa fase).** Per compilare una funzione RDF4J servono Java 21 e Maven. Se i sorgenti di `graphdb-extension/` sono presenti nel repository, da quella cartella esegui `mvn clean package`, copia `target/graphdb-extension-0.1.0.jar` nella cartella `lib/` della distribuzione GraphDB e riavvia GraphDB. La prova con `sem:echo` verifica solo che il JAR venga caricato; **non** implementa gli operatori semantici. Non mettere `target/` su Git. L'integrazione con il gateway resta al passo 9.
+### Estensione Java
+
+**A cosa serve.** GraphDB non può chiamare codice Python dentro una query. Il suo punto di estensione è una funzione scritta in Java (RDF4J *Function SPI*) dentro un file `.jar`, che GraphDB carica all'avvio. Quando il jar è caricato, una query può scrivere `FILTER(sem:filter(...))` e GraphDB esegue la funzione. La funzione `sem:filter` riceve il testo τ, la condizione ℓ e il nodo del run, manda una richiesta HTTP al gateway e restituisce `true` o `false`. Non è un server separato: gira dentro GraphDB. Tutto il resto del progetto (operatori, piani, τ, valutazione) resta in Python.
+
+**Stato attuale.** In `graphdb-extension/` c'è solo la funzione di prova `echo` (IRI `http://example.org/semop/function/echo`), che restituisce il proprio argomento. Serve a verificare che il jar venga caricato. Non implementa ancora nessun operatore semantico. L'integrazione con il gateway resta al passo 9.
+
+**Come si compila.** Servono JDK 21 e Maven. Da `graphdb-extension/`:
+
+```bash
+mvn clean package
+```
+
+Il risultato è `target/graphdb-extension-0.1.0.jar`. Non mettere `target/` su Git.
+
+**Come si carica in GraphDB.**
+
+- *Installazione locale:* copia il jar nella cartella `lib/` della distribuzione e riavvia GraphDB.
+- *Docker:* nel `docker-compose.yml` c'è già una riga commentata che monta il jar nella cartella `lib/` del container. Dopo `mvn clean package`, togli il commento e riavvia con `docker compose up -d --force-recreate`. Se il file non esiste quando avvii il container, Docker crea una **cartella** al suo posto. Il percorso `/opt/graphdb/dist/lib` è *da verificare*: `docker exec graphdb ls /opt/graphdb/dist/lib` deve mostrare i jar di GraphDB.
+
+**Come si prova.** Dalla Workbench (pannello SPARQL), su qualsiasi repository:
+
+```sparql
+SELECT ?x WHERE { BIND(<http://example.org/semop/function/echo>("ciao") AS ?x) }
+```
+
+Se il jar è caricato, `?x` vale `ciao`. Se la query dà errore di funzione sconosciuta, il jar non è nella cartella giusta o GraphDB non è stato riavviato. Le slide del corso segnalano che il deployment dentro GraphDB non è stato provato dai docenti: **annotate in `docs/log.md` tutto quello che osservate**.
+
+**Cosa verrà dopo (per il design note).** Si sviluppa `sem:filter` e si prova su un RDF4J in memoria, dove il ciclo di prova dura secondi; solo dopo si carica in GraphDB. Per leggere il JSON della risposta servirà probabilmente la libreria Jackson (scope `provided`, già presente in GraphDB secondo le slide). L'indirizzo del gateway si passa come proprietà di sistema. Con Docker, il gateway gira sul computer ospite e il container non lo raggiunge con `localhost`: nel compose ci sono, commentate, le righe per usare `host.docker.internal` e la proprietà `GDB_JAVA_OPTS` *(da verificare)*.
+
+### τ come dati nel grafo *(da completare)*
+
+La funzione Java gira dentro GraphDB e riceve τ come argomento: non può chiamare `src/tau.py`. Quindi uno script in `src/` (da scrivere) costruisce τ per ogni film con la funzione Python e scrive una tripla `ex:tau` per film in un **named graph per variante** (esempio: `ex:tau-t0_v1`), nei repository senza nascoste. Le query leggono τ da quel graph e la passano a `sem:filter`.
 
 ## 7. Modello locale per lo sviluppo
 
@@ -270,7 +324,7 @@ Durante lo sviluppo si usa un modello piccolo sulla propria macchina. Non si spe
 1. Avvia Unsloth Studio. L'interfaccia web è su `http://localhost:8889` (la porta può cambiare: controlla l'indirizzo mostrato all'avvio).
 2. Carica un modello GGUF dall'interfaccia. Modelli provati: `unsloth/gemma-4-E2B-it-GGUF` (2,3 GB, molto compresso, veloce, risposte semplici) e `unsloth/Qwen3.5-9B-MTP-GGUF` (4,5 GB, più capace). Il campo `loaded` di `/v1/models` dice quale è caricato.
 3. Il server richiede un **token Bearer**. Crea una chiave API dalle impostazioni dell'interfaccia (se non trovi la voce, guarda `http://localhost:8889/docs`: la rotta `/api/auth/api-keys` esiste). La chiave si vede una sola volta: copiala subito nel `.env` come `LOCAL_MODEL_API_KEY`.
-4. Verifica con `notebooks/00_check_environment.ipynb` (vedi passo 10).
+4. Verifica con `notebooks/00_check_environment.ipynb` (vedi passo 10).
 
 ### Opzione B: Ollama
 
@@ -279,7 +333,7 @@ ollama pull <modello>        # un modello quantizzato da 0.8 a 9 miliardi di par
 ollama run <modello> "ciao"  # prova rapida
 ```
 
-Indirizzo tipico: `http://localhost:11434/v1`. Nessuna vera chiave locale: usa `LOCAL_MODEL_API_KEY=ollama` come segnaposto. Esempio verificato su macOS: `ollama pull qwen2.5:3b`, poi `LOCAL_MODEL=qwen2.5:3b` nel `.env`.
+Indirizzo tipico: `http://localhost:11434/v1`. Nessuna vera chiave locale: usa `LOCAL_MODEL_API_KEY=ollama`come segnaposto. Esempio verificato su macOS: `ollama pull qwen2.5:3b`, poi `LOCAL_MODEL=qwen2.5:3b` nel `.env`.
 
 ### Opzione C: llama-server (llama.cpp)
 
@@ -291,7 +345,7 @@ Indirizzo: `http://localhost:8080/v1`. Espone anche le log-probabilità, utili 
 
 ### Test del server locale (cella del notebook)
 
-Il notebook `notebooks/00_check_environment.ipynb` esegue questo controllo leggendo `LOCAL_MODEL_URL`, `LOCAL_MODEL_API_KEY` e `LOCAL_MODEL` dal `.env`; funziona con Ollama o Unsloth Studio.
+Il notebook `notebooks/00_check_environment.ipynb` esegue questo controllo leggendo `LOCAL_MODEL_URL`, `LOCAL_MODEL_API_KEY` e `LOCAL_MODEL` dal `.env`; funziona con Ollama o Unsloth Studio.
 
 ```python
 import os, httpx
@@ -317,7 +371,7 @@ for nome, testo in casi.items():
     print("   ", r.json()["choices"][0]["message"]["content"] if r.status_code == 200 else r.text[:300])
 ```
 
-Esito atteso: `200` e `{"answer": true}` / `{"answer": false}`. Il formato JSON va controllato: il campo `answer` deve essere booleano. Questo test mostra che il percorso funziona, non quanto il modello sia buono sui dati veri: con modelli molto compressi aspettatevi errori e qualche risposta fuori formato (parse failure).
+Esito atteso: `200` e `{"answer": true}` / `{"answer": false}`. Il formato JSON va controllato: il campo `answer`deve essere booleano. Questo test mostra che il percorso funziona, non quanto il modello sia buono sui dati veri: con modelli molto compressi aspettatevi errori e qualche risposta fuori formato (parse failure).
 
 ## 8. Modello a pagamento: Google (da usare solo quando la pipeline funziona)
 
@@ -404,17 +458,17 @@ Dalla radice del repository, con l'ambiente attivo:
 jupyter notebook
 ```
 
-I notebook stanno in `notebooks/`. Seleziona `notebooks/00_check_ambiente.ipynb`, seleziona il kernel **Python (progetto GDB)** ed esegui.
+I notebook stanno in `notebooks/`. Apri `notebooks/00_check_environment.ipynb`, seleziona il kernel **Python (progetto GDB)** ed esegui.
 
 Il notebook controlla:
 
-1. **Ambiente Python e `.env`** — stampa il percorso di Python, le versioni di `pandas` e `httpx` e la presenza delle variabili di configurazione (non stampa le chiavi). `GOOGLE_API_KEY` è facoltativa durante lo sviluppo locale.
-2. **Connessione a GraphDB** — usa `GRAPHDB_URL` e `GRAPHDB_REPO_DEV` per interrogare `films-dev`; il risultato atteso per il main set è **1000**.
-3. **Server locale** — interroga l'endpoint `LOCAL_MODEL_URL/models` di Ollama o Unsloth Studio, secondo il `.env` personale.
-4. **Test del modello locale** — invia due esempi *films* con il criterio Q1 (Seconda guerra mondiale), verifica che la risposta sia JSON e che `answer` sia un booleano. Non sono esempi del benchmark.
-5. **Google (facoltativo)** — conserva i controlli per la chiave e i modelli Google. Il test che genera testo con un modello a pagamento è **disabilitato di default** (`ESEGUI_TEST_GOOGLE_A_PAGAMENTO = False`): abilitalo solo quando serve.
+1. **Ambiente Python e `.env`** — stampa il percorso di Python, le versioni di `pandas` e `httpx` e la presenza delle variabili di configurazione (non stampa le chiavi). `GOOGLE_API_KEY` è facoltativa durante lo sviluppo locale.
+2. **Connessione a GraphDB** — usa `GRAPHDB_URL` e `GRAPHDB_REPO_DEV` per interrogare `films-dev`; il risultato atteso per il main set è **1000**.
+3. **Server locale** — interroga l'endpoint `LOCAL_MODEL_URL/models` di Ollama o Unsloth Studio, secondo il `.env` personale.
+4. **Test del modello locale** — invia due esempi *films* con il criterio Q1 (Seconda guerra mondiale), verifica che la risposta sia JSON e che `answer` sia un booleano. Non sono esempi del benchmark.
+5. **Google (facoltativo)** — conserva i controlli per la chiave e i modelli Google. Il test che genera testo con un modello a pagamento è **disabilitato di default** (`ESEGUI_TEST_GOOGLE_A_PAGAMENTO = False`): abilitalo solo quando serve.
 
-Per eseguire il notebook dalla radice del repository, avvia `jupyter notebook`, apri `notebooks/00_check_environment.ipynb` e seleziona il kernel corretto. In alternativa aprilo direttamente in VS Code con l'estensione Jupyter.
+Per eseguire il notebook dalla radice del repository, avvia `jupyter notebook`, apri `notebooks/00_check_environment.ipynb` e seleziona il kernel corretto. In alternativa aprilo direttamente in VS Code con l'estensione Jupyter.
 
 Poi, quando il gateway è pronto, esegui il **test M1**: una chiamata semantica da una query, attraverso il gateway, fino al modello locale e ritorno, su dieci entità.
 
@@ -424,19 +478,23 @@ Infine controlla il checker (dalla radice):
 python tools/semops_check.py . --data films=data/films --results eval/results.csv
 ```
 
-Con un solo dominio non è verificato che funzioni: il comando del professore usa `films` e `games`. Se il checker richiede entrambi, eseguirlo solo quando sarà disponibile anche `data/games/`.
+Con un solo dominio non è verificato che funzioni: il comando del professore usa `films` e `games`. Se il checker richiede entrambi, eseguirlo solo quando sarà disponibile anche `data/games/`.
 
 ## Problemi comuni
 
-| Sintomo                                           | Causa e rimedio                                                                                                                                              |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `No matching distribution found for numpy==...`   | Quella versione non esiste. Metti `numpy` senza versione, installa, poi pinna la versione installata (passo 3)                                               |
-| Errore su `fastembed` o `onnxruntime`             | Può mancare un pacchetto per la tua versione di Python. Commenta la riga con `#`: serve solo al blocking (M2/M3). Poi usa un ambiente con Python 3.12 o 3.13 |
-| PowerShell non attiva `.venv`                     | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, poi riprova                                                                                           |
-| `presente: False` per una variabile               | Il `.env` non esiste o non è nella radice. Crealo con `cp`/`copy` e riavvia il kernel del notebook                                                           |
-| Il server Unsloth risponde `401 Not authenticated` | Manca il token Bearer: crea la chiave (passo 7) e mettila in `LOCAL_MODEL_API_KEY`                                                                           |
-| `/v1/models` mostra `loaded: False`               | Carica il modello nell'interfaccia di Unsloth prima della chiamata                                                                                           |
-| Un file di dati compare in `git status`           | Non fare commit. `.gitignore` non toglie file già tracciati: usa `git rm -r --cached <percorso>`                                                             |
+| Sintomo                                              | Causa e rimedio                                                                                                                                              |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `No matching distribution found for numpy==...`      | Quella versione non esiste. Metti `numpy` senza versione, installa, poi pinna la versione installata (passo 3)                                               |
+| Errore su `fastembed` o `onnxruntime`                | Può mancare un pacchetto per la tua versione di Python. Commenta la riga con `#`: serve solo al blocking (M2/M3). Poi usa un ambiente con Python 3.12 o 3.13 |
+| PowerShell non attiva `.venv`                        | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, poi riprova                                                                                           |
+| `presente: False` per una variabile                  | Il `.env` non esiste o non è nella radice. Crealo con `cp`/`copy` e riavvia il kernel del notebook                                                           |
+| Il server Unsloth risponde `401 Not authenticated`   | Manca il token Bearer: crea la chiave (passo 7) e mettila in `LOCAL_MODEL_API_KEY`                                                                           |
+| `/v1/models` mostra `loaded: False`                  | Carica il modello nell'interfaccia di Unsloth prima della chiamata                                                                                           |
+| `Connection refused` verso `localhost:7200`          | GraphDB non è avviato: con Docker `docker compose up -d`, poi `docker compose ps`e `docker compose logs`                                                     |
+| Ogni query a GraphDB fallisce                        | Probabile problema di licenza (le slide lo segnalano): leggi il messaggio e annotalo in `docs/log.md`                                                        |
+| La funzione `echo` dà errore di funzione sconosciuta | Il jar non è nella cartella `lib/` giusta, oppure GraphDB non è stato riavviato dopo la copia                                                                |
+| Docker ha creato una cartella al posto del jar       | Il jar non esisteva al primo avvio: costruiscilo con `mvn clean package`, cancella la cartella creata e riavvia                                              |
+| Un file di dati compare in `git status`              | Non fare commit. `.gitignore` non toglie file già tracciati: usa `git rm -r --cached <percorso>`                                                             |
 
 ## Flusso di lavoro con Git
 
