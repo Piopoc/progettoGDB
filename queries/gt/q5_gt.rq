@@ -1,0 +1,11 @@
+PREFIX ex: <http://example.org/semop/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
+SELECT ?film 
+        (GROUP_CONCAT(DISTINCT STR(?location); separator=" | ") AS ?locations)
+		(COUNT(DISTINCT ?location) AS ?count) 
+WHERE {
+    ?film ex:inSet ex:set-main ;
+        wdt:P840 ?location .
+}
+GROUP BY ?film

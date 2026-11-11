@@ -1,0 +1,26 @@
+PREFIX ex: <http://example.org/semop/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX schema: <http://schema.org/>
+PREFIX sem: <http://example.org/semop/function/>
+
+SELECT ?film ?narrativeLocation
+WHERE {
+    {
+        SELECT DISTINCT ?film ?tau
+        WHERE {
+            ?film ex:inSet ex:set-main ;
+                rdfs:label ?title ;
+                schema:description ?description ;
+                ex:lead ?lead .
+
+            # TODO: sostituire con tau effettiva
+            BIND(CONCAT(?title, " ", ?description, " ", ?lead) AS ?tau)
+        }
+        LIMIT 100000
+    }
+    BIND(sem:map(
+        ?tau,
+        "the main place where the story of the film is set",
+        ex:run-q5
+    ) AS ?narrativeLocation)
+}

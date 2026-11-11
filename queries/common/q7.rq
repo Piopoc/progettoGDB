@@ -1,0 +1,34 @@
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX ex: <http://example.org/semop/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX schema: <http://schema.org/>
+PREFIX sem: <http://example.org/semop/function/>
+
+SELECT DISTINCT ?film ?novel
+WHERE {
+    {
+        SELECT DISTINCT ?film ?novel ?filmTau ?novelTau
+        WHERE {
+            ?film ex:inSet ex:set-q7_left ;
+                rdfs:label ?filmTitle ;
+                schema:description ?filmDescription ;
+                ex:lead ?filmLead .
+	        ?novel ex:inSet ex:set-q7_right ;
+                rdfs:label ?novelTitle ;
+                schema:description ?novelDescription ;
+                ex:lead ?novelLead .
+
+            # TODO: sostituire con tau effettiva
+            BIND (CONCAT(?filmTitle, " ", ?filmDescription, " ", ?filmLead) AS ?filmTau)
+            BIND (CONCAT(?novelTitle, " ", ?novelDescription, " ", ?novelLead) AS ?novelTau)
+        }
+        LIMIT 100000
+    }
+
+    FILTER(sem:join(
+        ?filmTau,
+        ?novelTau,
+        "the film is based on the novel",
+        ex:run-q7
+    ))
+}

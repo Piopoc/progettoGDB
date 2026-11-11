@@ -1,0 +1,14 @@
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX ex: <http://example.org/semop/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
+SELECT ?decade (COUNT(DISTINCT ?film) AS ?numberOfFilms)
+WHERE {
+    ?film ex:inSet ex:set-main ;
+    	wdt:P921/(wdt:P279|wdt:P361)* wd:Q362 ;
+    	ex:firstYear ?year .
+    BIND(xsd:integer(FLOOR(?year / 10) * 10) AS ?decade)
+}
+GROUP BY ?decade
+ORDER BY ?decade

@@ -1,0 +1,9 @@
+PREFIX ex: <http://example.org/semop/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
+SELECT DISTINCT ?film ?novel 
+WHERE {
+    ?film ex:inSet ex:set-q6_left ;
+    	wdt:P144 ?novel .
+    ?novel ex:inSet ex:set-q6_right .
+}
