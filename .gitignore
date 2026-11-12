@@ -1,12 +1,13 @@
 # Ignore big data but keep the directory
 data/games/*
 data/films/*
+cache/
 
 # Docker
 dokcer-data/
 
 # Secrets
-.env
+*.env
 !.env.example
 
 # Virtual environment
