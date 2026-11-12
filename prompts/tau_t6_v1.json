@@ -1,0 +1,14 @@
+{
+  "use_description": true,
+  "use_lead": true,
+  "max_chars": 1200,
+  "extra_props": {
+    "Film": [
+      "P364",
+      "P495"
+    ],
+    "Novel": [
+      "P50"
+    ]
+  }
+}

@@ -1,12 +1,19 @@
 services:
   graphdb:
-    image: ontotext/graphdb:10.7.4
+    image: ontotext/graphdb:${GRAPHDB_TAG:-10.7.4}
     container_name: graphdb
     restart: unless-stopped
     ports:
       - "7200:7200"
     volumes:
       # Persistenza dei dati e delle configurazioni
-      - ./graphdb-data:/opt/graphdb/home
+      - ${GRAPHDB_HOME:-./docker-data/graphdb-home}:/opt/graphdb/home
       # Cartella host dove inserire i file RDF da importare
-      - ./import:/root/graphdb-import
+      - ${GRAPHDB_IMPORT:-./data/films/}:/root/graphdb-import:ro
+
+      # - ./graphdb-extension/target/graphdb-extension-0.1.0.jar:/opt/graphdb/dist/lib/graphdb-extension-0.1.0.jar:ro
+# extra_hosts:
+#   - "host.docker.internal:host-gateway"
+# environment:
+#   GDB_JAVA_OPTS: "-Dsemop.gateway.url=http://host.docker.internal:8000/v1"
+

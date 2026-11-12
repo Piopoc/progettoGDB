@@ -1,0 +1,5 @@
+variante,modello,n,n_validi,parse_failures,quota_fallimenti,tp,fp,fn,precision,recall,f1,f1_fallimenti_come_no,f1_chiave_diretta,recall_espliciti,recall_impliciti,token_tau_medi,token_tau_p90,token_ingresso_reali_medi,token_uscita_medi,secondi_per_richiesta,n_confronto,f1_diff_vs_t0,ic95_basso,ic95_alto,dentro_il_rumore,differenza_sotto_1_punto
+t0,"qwen2.5:3b [json_schema, max_tokens=300]",150,150,0.0,0.0,18.0,5.0,10.0,0.783,0.643,0.706,0.706,0.653,0.833,0.5,170.5,272.0,225.5,13.0,,,,,,,
+t9,"qwen2.5:3b [json_schema, max_tokens=300]",150,150,0.0,0.0,23.0,36.0,5.0,0.39,0.821,0.529,0.529,0.494,0.917,0.75,263.0,467.0,319.2,13.0,,150.0,-0.175,-0.306,-0.04,False,False
+t10,"qwen2.5:3b [json_schema, max_tokens=300]",150,150,0.0,0.0,19.0,6.0,9.0,0.76,0.679,0.717,0.717,0.667,0.917,0.5,190.9,368.0,247.2,13.0,3.34,150.0,0.011,-0.04,0.068,True,False
+parola-chiave (su t0),-,150,150,,,,,,0.923,0.429,0.585,,,,,,,,,,,,,,,
