@@ -4,7 +4,8 @@ data/films/*
 cache/
 
 # Docker
-dokcer-data/
+docker-data/
+graphdb-data/
 
 # Secrets
 *.env

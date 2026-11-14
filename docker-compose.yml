@@ -1,12 +1,19 @@
 services:
   graphdb:
-    image: ontotext/graphdb:10.7.4
+    image: ontotext/graphdb:11.5.0
     container_name: graphdb
     restart: unless-stopped
     ports:
       - "7200:7200"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - GATEWAY_URL=http://host.docker.internal:11434/v1
+      - LOCAL_MODEL=${LOCAL_MODEL}
     volumes:
       # Persistenza dei dati e delle configurazioni
       - ./graphdb-data:/opt/graphdb/home
       # Cartella host dove inserire i file RDF da importare
       - ./import:/root/graphdb-import
+      # Estensione Java per le funzioni sem:*
+      - ./graphdb-extension/target/graphdb-extension-0.1.0.jar:/opt/graphdb/dist/lib/graphdb-extension-0.1.0.jar
