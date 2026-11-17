@@ -1,0 +1,9 @@
+variante,modello,n,n_validi,parse_failures,quota_fallimenti,tp,fp,fn,precision,recall,f1,f1_fallimenti_come_no,f1_chiave_diretta,recall_espliciti,recall_impliciti,token_tau_medi,token_tau_p90,token_ingresso_reali_medi,token_uscita_medi,secondi_per_richiesta,n_confronto,f1_diff_vs_t0,ic95_basso,ic95_alto,dentro_il_rumore,differenza_sotto_1_punto
+t0,"qwen2.5:3b [json_schema, max_tokens=300]",150,150,0.0,0.0,18.0,5.0,10.0,0.783,0.643,0.706,0.706,0.653,0.833,0.5,170.5,272.0,225.5,13.0,,,,,,,
+t1,"qwen2.5:3b [json_schema, max_tokens=300]",150,150,0.0,0.0,14.0,3.0,14.0,0.824,0.5,0.622,0.622,0.605,0.75,0.312,124.0,156.0,176.8,13.0,,150.0,-0.085,-0.221,0.031,True,False
+t2,"qwen2.5:3b [json_schema, max_tokens=300]",150,150,0.0,0.0,19.0,6.0,9.0,0.76,0.679,0.717,0.717,0.667,0.75,0.625,175.0,274.0,230.2,13.0,,150.0,0.013,-0.099,0.133,True,False
+t3,"qwen2.5:3b [json_schema, max_tokens=300]",150,150,0.0,0.0,20.0,12.0,8.0,0.625,0.714,0.667,0.667,0.621,0.917,0.562,181.6,274.0,236.4,13.0,,150.0,-0.039,-0.145,0.066,True,False
+t4,"qwen2.5:3b [json_schema, max_tokens=300]",150,150,0.0,0.0,7.0,2.0,21.0,0.778,0.25,0.378,0.378,0.4,0.25,0.25,15.2,20.0,63.9,13.0,,150.0,-0.329,-0.55,-0.12,False,False
+t5,"qwen2.5:3b [json_schema, max_tokens=300]",150,150,0.0,0.0,22.0,16.0,6.0,0.579,0.786,0.667,0.667,0.625,0.833,0.75,213.9,314.0,267.9,13.0,,150.0,-0.04,-0.181,0.097,True,False
+t6,"qwen2.5:3b [json_schema, max_tokens=300]",150,150,0.0,0.0,21.0,9.0,7.0,0.7,0.75,0.724,0.724,0.679,0.917,0.625,183.5,274.0,238.1,13.0,,150.0,0.019,-0.089,0.134,True,False
+parola-chiave (su t0),-,150,150,,,,,,0.923,0.429,0.585,,,,,,,,,,,,,,,

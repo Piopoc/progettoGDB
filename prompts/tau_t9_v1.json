@@ -1,0 +1,23 @@
+{
+  "use_description": true,
+  "use_lead": true,
+  "max_chars": null,
+  "extra_props": {
+    "Film": [
+      "P31",
+      "P57",
+      "P58",
+      "P86",
+      "P162",
+      "P272",
+      "P344",
+      "P364",
+      "P462",
+      "P495",
+      "P750",
+      "P1040",
+      "P1431",
+      "P1657"
+    ]
+  }
+}

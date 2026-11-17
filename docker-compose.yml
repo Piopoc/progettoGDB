@@ -12,7 +12,7 @@ services:
       - LOCAL_MODEL=${LOCAL_MODEL}
     volumes:
       # Persistenza dei dati e delle configurazioni
-      - ./graphdb-data:/opt/graphdb/home
+      - ${GRAPHDB_HOME:-./docker-data/graphdb-home}:/opt/graphdb/home
       # Cartella host dove inserire i file RDF da importare
       - ./import:/root/graphdb-import
       # Estensione Java per le funzioni sem:*

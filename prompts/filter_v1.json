@@ -1,0 +1,8 @@
+{
+  "instructions": "Decide whether the input satisfies the criterion. Reply only with JSON containing a boolean field named \"answer\".",
+  "template": "Criterion: {langex}\nInput: {tau}",
+  "criteria": {
+    "Q1": "the film deals with the Second World War",
+    "Q2": "the film deals with time travel"
+  }
+}
