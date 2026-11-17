@@ -7,6 +7,9 @@ cache/
 docker-data/
 graphdb-data/
 
+# RDF
+rdf/*.nq
+
 # Secrets
 *.env
 !.env.example
