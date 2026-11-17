@@ -4,6 +4,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.model.ValueFactory;
@@ -17,7 +18,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 public class FilterFunction implements Function {
 
-    private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(120);
+
+    private static final String SYSTEM_PROMPT =
+            "Decide whether the input satisfies the criterion. "
+            + "Reply only with JSON containing a boolean field named \"answer\".";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Override
@@ -64,14 +73,16 @@ public class FilterFunction implements Function {
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
+                    .timeout(REQUEST_TIMEOUT)
                     .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer ollama")
+                    .header("Authorization", "Bearer " + resolveApiKey())
                     .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                     .build();
 
             HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() != 200) {
+                logError("HTTP " + response.statusCode() + " from " + endpoint + ": " + response.body());
                 throw new ValueExprEvaluationException(
                     "Gateway returned HTTP " + response.statusCode() + ": " + response.body()
                 );
@@ -81,6 +92,7 @@ public class FilterFunction implements Function {
             JsonNode contentNode = root.path("choices").path(0).path("message").path("content");
 
             if (contentNode.isMissingNode() || !contentNode.isTextual()) {
+                logError("missing message content: " + response.body());
                 throw new ValueExprEvaluationException("Missing message content in LLM response");
             }
 
@@ -92,6 +104,7 @@ public class FilterFunction implements Function {
             JsonNode answerNode = parsedAnswer.get("answer");
 
             if (answerNode == null || !answerNode.isBoolean()) {
+                logError("parse failure: " + cleanContent);
                 throw new ValueExprEvaluationException(
                     "Parse failure: expected boolean 'answer' field, got: " + cleanContent
                 );
@@ -101,10 +114,12 @@ public class FilterFunction implements Function {
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            logError("request interrupted");
             throw new ValueExprEvaluationException("HTTP request to gateway interrupted", e);
         } catch (ValueExprEvaluationException e) {
             throw e;
         } catch (Exception e) {
+            logError("error communicating with " + gatewayURL + ": " + e);
             throw new ValueExprEvaluationException("Error communicating with gateway: " + e.getMessage(), e);
         }
     }
@@ -116,12 +131,19 @@ public class FilterFunction implements Function {
         body.put("seed", 0);
         body.put("max_tokens", 300);
         body.put("stream", false);
-        body.putObject("response_format").put("type", "json_object");
+        ObjectNode responseFormat = body.putObject("response_format");
+        responseFormat.put("type", "json_schema");
+        ObjectNode jsonSchema = responseFormat.putObject("json_schema");
+        jsonSchema.put("name", "answer");
+        ObjectNode schema = jsonSchema.putObject("schema");
+        schema.put("type", "object");
+        schema.putObject("properties").putObject("answer").put("type", "boolean");
+        schema.putArray("required").add("answer");
 
         ArrayNode messages = body.putArray("messages");
         messages.addObject()
                 .put("role", "system")
-                .put("content", "Respond only with JSON: {\"answer\": true} or {\"answer\": false}.");
+                .put("content", SYSTEM_PROMPT);
         messages.addObject()
                 .put("role", "user")
                 .put("content", "Criterion: " + criterion + "\nInput: " + tau);
@@ -137,6 +159,15 @@ public class FilterFunction implements Function {
             );
         }
         return gatewayURL.trim();
+    }
+
+    private String resolveApiKey() {
+        String key = System.getenv("LOCAL_MODEL_API_KEY");
+        return (key == null || key.isBlank()) ? "ollama" : key.trim();
+    }
+
+    private static void logError(String message) {
+        System.err.println("[sem:filter] " + message);
     }
 
     private String resolveLocalModel() throws ValueExprEvaluationException {

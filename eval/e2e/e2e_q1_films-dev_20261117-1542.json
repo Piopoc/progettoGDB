@@ -1,0 +1,20 @@
+{
+  "data": "20261117-1542",
+  "repo": "films-dev",
+  "graph_tau": "http://example.org/semop/tau-t0_v1",
+  "langex": "the film deals with the Second World War",
+  "run": "ex:run-e2e-q1",
+  "modello": "qwen2.5:3b",
+  "n": 10,
+  "errori": 0,
+  "secondi_diagnostica": 22.02,
+  "secondi_riferimento": 21.91,
+  "veri_riferimento": [
+    "Q102754"
+  ],
+  "veri_diagnostica": [
+    "Q102754"
+  ],
+  "query_diagnostica": "PREFIX ex: <http://example.org/semop/>\nPREFIX sem: <http://example.org/semop/function/>\nSELECT ?film ?ans WHERE {\n  { SELECT DISTINCT ?film ?tau WHERE {\n        ?film ex:inSet ex:set-main .\n        GRAPH <http://example.org/semop/tau-t0_v1> { ?film ex:tau ?tau }\n      } ORDER BY ?film LIMIT 10 }\n  BIND(sem:filter(?tau, \"the film deals with the Second World War\", ex:run-e2e-q1) AS ?ans)\n}",
+  "query_riferimento": "PREFIX ex: <http://example.org/semop/>\nPREFIX sem: <http://example.org/semop/function/>\nSELECT ?film WHERE {\n  { SELECT DISTINCT ?film ?tau WHERE {\n        ?film ex:inSet ex:set-main .\n        GRAPH <http://example.org/semop/tau-t0_v1> { ?film ex:tau ?tau }\n      } ORDER BY ?film LIMIT 10 }\n  FILTER(sem:filter(?tau, \"the film deals with the Second World War\", ex:run-e2e-q1))\n}"
+}

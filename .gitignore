@@ -6,6 +6,7 @@ cache/
 # Docker
 docker-data/
 graphdb-data/
+docker-compose.override.yml
 
 # RDF
 rdf/*.nq

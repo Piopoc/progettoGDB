@@ -46,6 +46,8 @@ def main():
     ap.add_argument("--prompts", default="prompts/filter_v1.json")
     ap.add_argument("--run", default="ex:run-e2e-q1")
     ap.add_argument("--out", default="eval/e2e")
+    ap.add_argument("--timeout", type=float, default=None,
+                    help="secondi massimi per ciascuna query (predefinito: 15 per film + 30)")
     a = ap.parse_args()
 
     load_dotenv(find_dotenv(usecwd=True))
@@ -53,10 +55,21 @@ def main():
     langex = json.loads(Path(a.prompts).read_text(encoding="utf-8"))["criteria"]["Q1"]
     lit = json.dumps(langex)  # letterale SPARQL con virgolette ed escape
 
-    def run(q):
+    limit = a.timeout or 15 * a.n + 30
+
+    def run(q, nome):
+        print(f"Eseguo la forma {nome} su {a.n} film (attese {a.n} chiamate, tempo massimo {limit:.0f} s)...", flush=True)
         t = time.time()
-        r = httpx.post(f"{base}/repositories/{a.repo}", data={"query": q},
-                       headers={"Accept": "application/sparql-results+json"}, timeout=None)
+        try:
+            r = httpx.post(f"{base}/repositories/{a.repo}", data={"query": q},
+                           headers={"Accept": "application/sparql-results+json"},
+                           timeout=httpx.Timeout(limit, connect=10))
+        except httpx.TimeoutException:
+            raise SystemExit(
+                f"Nessuna risposta da GraphDB entro {limit:.0f} s. La query potrebbe essere ancora in esecuzione: "
+                "fermarla dalla Workbench (Monitoring -> Queries -> Abort). Poi controllare nel monitor del server "
+                "del modello quante richieste sono arrivate: zero = il container non raggiunge il server; "
+                f"molte più di {a.n} = GraphDB valuta la funzione su più film del necessario.")
         if r.status_code != 200:
             raise SystemExit(f"GraphDB ha risposto {r.status_code}:\n{r.text[:1500]}")
         return r.json()["results"]["bindings"], time.time() - t
@@ -70,7 +83,7 @@ def main():
   FILTER(sem:filter(?tau, {lit}, {a.run}))
 }}"""
 
-    rows, t1 = run(q_diag)
+    rows, t1 = run(q_diag, "diagnostica")
     if not rows:
         raise SystemExit("Nessun film: τ non è nel graph indicato (lanciare prima src.materialize_tau) o il set è vuoto.")
     key = load_key(Path(a.data) / "gt" / "q1.csv")
@@ -81,7 +94,7 @@ def main():
         ans = b.get("ans", {}).get("value")          # assente = errore della funzione
         out.append({"qid": qid, "film": labels.get(qid, "?"), "risposta": ans if ans is not None else "ERRORE",
                     "verita_chiave_espansa": key.get(qid, (False, False))[0]})
-    ref, t2 = run(q_ref)
+    ref, t2 = run(q_ref, "di riferimento")
     ref_q = sorted(b["film"]["value"].rsplit("/", 1)[-1] for b in ref)
     diag_true = sorted(r["qid"] for r in out if r["risposta"] == "true")
 

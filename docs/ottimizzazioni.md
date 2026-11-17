@@ -174,3 +174,42 @@ risparmiate. Attenzione al leakage: se il vicinato contiene la proprietà nascos
 
 Domande da fare al professore o al TA: se un risultato "nessun guadagno di qualità" in O4 è valutato come
 frontiera valida, e se il confronto con la libreria LOTUS conta come bonus anche con un solo operatore.
+
+## 7. Decisione del gruppo (16 novembre 2026)
+
+**Principale: O2 (blocking calibrato). Seconda: O4 (contesto dal grafo con restrizione anticipata).**
+Scartate O1 (manca un punteggio di confidenza affidabile dal modello piccolo) e O3 (risultato atteso poco
+informativo, e non confrontabile chiamata per chiamata con il riferimento).
+
+### Piano O2
+
+- **Segnale:** similarità coseno tra gli embedding di τ0 (film e romanzi), modello `bge-small-en-v1.5`.
+- **Obiettivo dichiarato:** una recall del blocking (per esempio 0,95) da fissare prima di guardare i risultati.
+- **Calibrazione:** sulla join piccola Q6 del dev; verifica dell'obiettivo sulla join grande Q7.
+- **Tre punti operativi:** k = 3, 5, 10.
+
+| Punto | Chiamate Q6 dev (50 × 100) | Chiamate Q7 dev (200 × 500) |
+|---|---|---|
+| riferimento (tutte le coppie) | 5.000 | 100.000 |
+| k = 10 | 500 | 2.000 |
+| k = 5 | 250 | 1.000 |
+| k = 3 | 150 | 600 |
+
+- **Riportare per ogni punto:** recall del blocking, chiamate, costo, F1 contro la chiave, accordo con il
+  riferimento; e un'analisi delle coppie perse.
+
+### Piano O4
+
+- **Parametro:** quanta parte del vicinato a un passo entra in τ.
+- **Tre punti operativi:** nessun vicino (t0), una o due proprietà scelte (t7 per i film; t8, autore, per i
+  romanzi), tutte le proprietà ammesse tranne il cast (t9, senza taglio). P161 escluso per il leakage trovato
+  (t5: il cast porta in τ il soggetto nascosto di quattro documentari).
+- **Dove si misura:** il filtro Q1 (risultati preliminari già in `eval/run_qwen3b_150*`) e la join piccola Q6,
+  sulle coppie che sopravvivono al blocking di O2.
+- **Restrizione anticipata:** sulla nostra query di tipo Q3 (restrizione strutturale + filtro), con le chiamate
+  risparmiate.
+- **Controllo di leakage** automatico e manuale per ogni configurazione.
+
+### Da chiedere al professore o al TA
+
+- Se una frontiera O4 senza guadagno di qualità sul filtro è considerata un risultato valido.

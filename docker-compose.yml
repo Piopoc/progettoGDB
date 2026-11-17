@@ -10,6 +10,7 @@ services:
     environment:
       - GATEWAY_URL=${DOCKER_GATEWAY_URL:-http://host.docker.internal:11434/v1}
       - LOCAL_MODEL=${LOCAL_MODEL}
+      - LOCAL_MODEL_API_KEY=${LOCAL_MODEL_API_KEY}
     volumes:
       # Persistenza dei dati e delle configurazioni
       - ${GRAPHDB_HOME:-./graphdb-data}:/opt/graphdb/home
