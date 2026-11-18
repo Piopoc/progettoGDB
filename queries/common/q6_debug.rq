@@ -1,0 +1,27 @@
+PREFIX ex: <http://example.org/semop/>
+PREFIX sem: <http://example.org/semop/function/>
+
+SELECT DISTINCT ?film ?novel ?prediction
+WHERE {
+    {
+        SELECT DISTINCT ?film ?novel ?filmTau ?novelTau
+        WHERE {
+            ?film ex:inSet ex:set-q6_left .
+	        ?novel ex:inSet ex:set-q6_right .
+
+            GRAPH <http://example.org/semop/tau-t0_v1> {
+                ?film ex:tau ?filmTau .
+                ?novel ex:tau ?novelTau .
+            }
+        }
+        ORDER BY ?film ?novel
+        LIMIT 10
+    }
+
+    BIND(sem:join(
+        ?filmTau,
+        ?novelTau,
+        "the film is based on the novel",
+        ex:run-q6-debug
+    ) AS ?prediction )
+}

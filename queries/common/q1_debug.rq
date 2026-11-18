@@ -1,0 +1,24 @@
+PREFIX ex: <http://example.org/semop/>
+PREFIX sem: <http://example.org/semop/function/>
+
+SELECT DISTINCT ?film ?prediction
+WHERE {
+    {
+        SELECT DISTINCT ?film ?tau
+        WHERE {
+            ?film ex:inSet ex:set-main .
+
+            GRAPH <http://example.org/semop/tau-t0_v1> {
+                ?film ex:tau ?tau .
+            }
+        }
+        ORDER BY ?film
+        LIMIT 10
+    }
+
+    BIND(sem:filter(
+        ?tau,
+        "the film deals with the Second World War",
+        ex:run-q1-debug
+    ) AS ?prediction )
+}

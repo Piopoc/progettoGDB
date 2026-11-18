@@ -1,0 +1,30 @@
+PREFIX ex: <http://example.org/semop/>
+PREFIX sem: <http://example.org/semop/function/>
+
+SELECT ?film ?predictedGenre
+WHERE {
+    {
+        SELECT DISTINCT ?film ?tau
+        WHERE {
+            ?film ex:inSet ex:set-q4_input .
+
+            GRAPH <http://example.org/semop/tau-t0_v1> {
+                ?film ex:tau ?tau .
+            }
+        }
+        ORDER BY ?film
+        LIMIT 10
+    }
+
+    BIND(
+        "Q130232|Q93204|Q369747|Q188473|Q157443|Q2484376|Q200092|Q471839"
+        AS ?allowedGenres
+    )
+    
+    BIND(sem:classify(
+        ?tau,
+        "the genre that describes the film best",
+        ?allowedGenres,
+        ex:run-q4-debug
+    ) AS ?predictedGenre)
+}

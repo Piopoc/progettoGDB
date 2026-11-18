@@ -1,7 +1,4 @@
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX ex: <http://example.org/semop/>
-PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-PREFIX schema: <http://schema.org/>
 PREFIX sem: <http://example.org/semop/function/>
 
 SELECT DISTINCT ?film ?novel
@@ -9,18 +6,13 @@ WHERE {
     {
         SELECT DISTINCT ?film ?novel ?filmTau ?novelTau
         WHERE {
-            ?film ex:inSet ex:set-q6_left ;
-                rdfs:label ?filmTitle ;
-                schema:description ?filmDescription ;
-                ex:lead ?filmLead .
-	        ?novel ex:inSet ex:set-q6_right ;
-                rdfs:label ?novelTitle ;
-                schema:description ?novelDescription ;
-                ex:lead ?novelLead .
+            ?film ex:inSet ex:set-q6_left .
+	        ?novel ex:inSet ex:set-q6_right .
 
-            # TODO: sostituire con tau effettiva
-            BIND (CONCAT(?filmTitle, " ", ?filmDescription, " ", ?filmLead) AS ?filmTau)
-            BIND (CONCAT(?novelTitle, " ", ?novelDescription, " ", ?novelLead) AS ?novelTau)
+            GRAPH <http://example.org/semop/tau-t0_v1> {
+                ?film ex:tau ?filmTau .
+                ?novel ex:tau ?novelTau .
+            }
         }
         LIMIT 100000
     }

@@ -1,0 +1,24 @@
+PREFIX ex: <http://example.org/semop/>
+PREFIX sem: <http://example.org/semop/function/>
+
+SELECT ?film ?narrativeLocation
+WHERE {
+    {
+        SELECT DISTINCT ?film ?tau
+        WHERE {
+            ?film ex:inSet ex:set-main .
+
+            GRAPH <http://example.org/semop/tau-t0_v1> {
+                ?film ex:tau ?tau .
+            }
+        }
+        ORDER BY ?film
+        LIMIT 10
+    }
+
+    BIND(sem:map(
+        ?tau,
+        "the main place where the story of the film is set",
+        ex:run-q5-debug
+    ) AS ?narrativeLocation)
+}
