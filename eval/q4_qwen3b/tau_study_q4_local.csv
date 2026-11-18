@@ -1,0 +1,3 @@
+variante,modello,n,n_validi,copertura,hit_rate,hit_rate_fallimenti_come_errore,accuracy,macro_f1,parse_failures,fuori_insieme,token_tau_medi,token_tau_p90,token_ingresso_reali_medi,token_uscita_medi,secondi_per_richiesta
+nome-del-genere-nel-testo (su t0),-,839,839,0.84,0.738,0.738,0.715,0.697,,,,,,,
+t0,"qwen2.5:3b [json_schema, max_tokens=300]",839,839,,0.878,0.878,0.854,0.747,0.0,0.0,170.7,271.0,265.9,15.8,2.72

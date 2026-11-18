@@ -1,0 +1,12 @@
+{
+  "instructions": "Decide whether the pair of inputs satisfies the criterion. Reply only with JSON containing a boolean field named \"answer\".",
+  "template": "Criterion: {langex}\nLeft: {left}\nRight: {right}",
+  "criteria": {
+    "Q6": "the film is based on the novel",
+    "Q7": "the film is based on the novel"
+  },
+  "sets": {
+    "Q6": ["q6_left", "q6_right"],
+    "Q7": ["q7_left", "q7_right"]
+  }
+}

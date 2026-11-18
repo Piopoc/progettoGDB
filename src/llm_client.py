@@ -1,4 +1,9 @@
-"""Client sottile per interrogare un modello con risposta {"answer": true/false}.
+"""Client sottile per interrogare un modello con risposta JSON.
+
+Due forme di risposta:
+  {"answer": true/false}       filtro e join (ask_bool, oppure ask senza choices)
+  {"label": <una di choices>}  classificazione (ask con choices=[...]); una risposta fuori dall'elenco
+                               è una risposta VALIDA ma sbagliata (out_of_set), non un parse failure.
 
 È provvisorio: serve fino alla lezione sul gateway (12 novembre) e ha la stessa idea del gateway:
 una cache su file (stessa richiesta = zero costo) e il conteggio delle richieste vere.
@@ -24,6 +29,11 @@ from dotenv import find_dotenv, load_dotenv
 
 GOOGLE_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
 SCHEMA = {"type": "object", "properties": {"answer": {"type": "boolean"}}, "required": ["answer"]}
+
+
+def label_schema(choices: list[str]) -> dict:
+    return {"type": "object", "properties": {"label": {"type": "string", "enum": list(choices)}},
+            "required": ["label"]}
 
 
 class LLMClient:
@@ -69,21 +79,28 @@ class LLMClient:
         self.new_requests = 0
 
     # --- chiave e cache ------------------------------------------------------------------
-    def key_for(self, system: str, user: str) -> str:
+    def key_for(self, system: str, user: str, choices: list[str] | None = None) -> str:
         parts = [self.backend, self.model, system, user, 0]
         if not self.thinking:
             parts.append("no-thinking")   # aggiunto solo se spento, così le vecchie risposte in cache restano valide
+        if choices is not None:
+            parts.append(["label", list(choices)])   # idem: le risposte booleane già in cache non cambiano chiave
         payload = json.dumps(parts, ensure_ascii=False)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    def is_cached(self, system: str, user: str) -> bool:
-        return self.key_for(system, user) in self._cache
+    def is_cached(self, system: str, user: str, choices: list[str] | None = None) -> bool:
+        return self.key_for(system, user, choices) in self._cache
 
-    def build_body(self, system: str, user: str) -> dict:
+    def _response_format(self, choices):
+        if choices is None or self.format_name == "json_object":
+            return self.response_format
+        return {"type": "json_schema", "json_schema": {"name": "label", "schema": label_schema(choices)}}
+
+    def build_body(self, system: str, user: str, choices: list[str] | None = None) -> dict:
         body = {
             "model": self.model, "temperature": 0, "max_tokens": self.max_tokens, "stream": False,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            "response_format": self.response_format,
+            "response_format": self._response_format(choices),
         }
         if self.backend == "local":
             body["seed"] = 0
@@ -93,11 +110,14 @@ class LLMClient:
 
     # --- chiamata --------------------------------------------------------------------------
     def ask_bool(self, system: str, user: str) -> dict:
-        k = self.key_for(system, user)
+        return self.ask(system, user)
+
+    def ask(self, system: str, user: str, choices: list[str] | None = None) -> dict:
+        k = self.key_for(system, user, choices)
         with self._lock:
             if k in self._cache:
                 return {**self._cache[k], "cached": True}
-        body = self.build_body(system, user)
+        body = self.build_body(system, user, choices)
         headers = {"Authorization": f"Bearer {self.key}"}
         last = None
         t_start = time.time()
@@ -116,10 +136,11 @@ class LLMClient:
             raise RuntimeError(f"richiesta fallita dopo 4 tentativi verso {self.base}/chat/completions: {last}")
 
         content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
-        answer, failure = self._parse(content)
+        answer, failure = self._parse(content) if choices is None else self._parse_label(content)
+        out_of_set = (not failure and choices is not None and answer not in choices)
         usage = data.get("usage") or {}
         finish = ((data.get("choices") or [{}])[0]).get("finish_reason")
-        rec = {"answer": answer, "parse_failure": failure, "finish_reason": finish,
+        rec = {"answer": answer, "parse_failure": failure, "out_of_set": out_of_set, "finish_reason": finish,
                "tokens_in": usage.get("prompt_tokens"), "tokens_out": usage.get("completion_tokens"),
                "raw": (content or "")[:200], "seconds": round(time.time() - t_start, 2)}
         with self._lock:
@@ -142,12 +163,26 @@ class LLMClient:
             return None, True
         return (a, False) if isinstance(a, bool) else (None, True)
 
-    def ask_many(self, pairs: list[tuple[str, str]], workers: int = 1, label: str = "") -> list[dict]:
+    @staticmethod
+    def _parse_label(content):
+        """Classificazione: serve una stringa nel campo "label". Se manca, è un parse failure.
+        Se c'è ma non è nell'elenco, la risposta è valida e viene contata come errore (out_of_set)."""
+        if not content:
+            return None, True
+        txt = re.sub(r"^```(?:json)?|```$", "", content.strip(), flags=re.M).strip()
+        try:
+            a = json.loads(txt).get("label")
+        except (ValueError, AttributeError):
+            return None, True
+        return (a.strip(), False) if isinstance(a, str) and a.strip() else (None, True)
+
+    def ask_many(self, pairs: list[tuple[str, str]], workers: int = 1, label: str = "",
+                 choices: list[str] | None = None) -> list[dict]:
         done = 0
 
         def one(p):
             nonlocal done
-            res = self.ask_bool(*p)
+            res = self.ask(*p, choices=choices)
             done += 1
             if done % 100 == 0:
                 print(f"  {label} {done}/{len(pairs)}", flush=True)
