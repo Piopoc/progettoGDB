@@ -20,17 +20,22 @@ public class ClassifyFunction extends AbstractSemFunction {
     public Value evaluate(ValueFactory valueFactory, Value... args)
             throws ValueExprEvaluationException {
 
-        if (args.length < 4) {
+        if (args.length < 5) {
             throw new ValueExprEvaluationException(
-                "Classify function expects at least 4 arguments"
+                "Classify function expects at least 5 arguments"
             );
         }
 
         String tau = args[0].stringValue().trim();
-        String runID = args[1].stringValue().trim();
+        String criterion = args[1].stringValue().trim();
+        String runID = args[2].stringValue().trim();
 
         if (tau.isBlank()) {
             return valueFactory.createLiteral("");
+        }
+
+        if (criterion.isBlank()) {
+            throw new ValueExprEvaluationException("criterion cannot be null or empty");
         }
 
         if (runID.isBlank()) {
@@ -38,24 +43,24 @@ public class ClassifyFunction extends AbstractSemFunction {
         }
 
         List<String> categories = new ArrayList<>();
-        for (int i = 2; i < args.length; i++) {
+        for (int i = 3; i < args.length; i++) {
             String cat = args[i].stringValue().trim();
             if (cat.isBlank()) {
                 throw new ValueExprEvaluationException(
-                    "All arguments after the first two cannot be null or empty"
+                    "All arguments after the first three cannot be null or empty"
                 );
             }
             categories.add(cat);
         }
 
-        String systemPrompt = "Respond only with JSON: {\"reasoning\": \"<1 sentence analyzing tone and genre>\", \"answer\": \"<category>\"}, choosing one of the provided list.";
-        String userPrompt = "Categories: " + String.join(", ", categories) + "\nInput: " + tau;
+        String systemPrompt = "Respond only with JSON: {\"label\": \"<category>\"}, choosing exactly one category from the provided list.";
+        String userPrompt = "Criterion: " + criterion + "\nInput: " + tau + "\nCategories: " + String.join(", ", categories);
 
         JsonNode parsedAnswer = callGateway(systemPrompt, userPrompt);
 
-        String answer = parsedAnswer.path("answer").asText().trim();
+        String answer = parsedAnswer.path("label").asText().trim();
         if (answer.isBlank()) {
-            throw new ValueExprEvaluationException("The LLM response did not contain a valid 'answer' field.");
+            throw new ValueExprEvaluationException("The LLM response did not contain a valid 'label' field.");
         }
 
         for (String category : categories) {

@@ -1,0 +1,22 @@
+public class MapFunction extends AbstractFunction {
+
+    @Override
+    public String getURI() {
+        return "http://example.org/semop/function/map";
+    }
+
+    @Override
+    public Value evaluate(ValueFactory valueFactory, Value... args) throws ValueExprEvaluationException {
+        
+    }
+
+    @Override
+    public Object execute(Object... args) {
+        if (args.length != 3) {
+            throw new IllegalArgumentException("MapFunction requires exactly 3 arguments: a map, a key, and a default value.");
+        }
+        
+        String tau = arg[0].toString().trim();
+        
+    }
+}
