@@ -1,2 +1,3 @@
 org.gdb.semop.EchoFunction
 org.gdb.semop.FilterFunction
+org.gdb.semop.ClassifyFunction
