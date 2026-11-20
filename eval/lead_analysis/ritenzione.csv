@@ -1,0 +1,12 @@
+tipo,taglio,Q1,Q4,Q6
+frasi,prime 1 frasi,0.267,0.92,0.306
+frasi,prime 2 frasi,0.633,0.983,0.667
+frasi,prime 3 frasi,0.844,0.988,0.806
+frasi,prime 5 frasi,0.933,0.99,0.917
+frasi,lead intero,1.0,1.0,1.0
+caratteri,300 caratteri,0.422,0.98,0.611
+caratteri,600 caratteri,0.911,0.99,0.861
+caratteri,900 caratteri,0.989,0.995,0.917
+caratteri,1200 caratteri,0.989,0.998,0.944
+caratteri,1800 caratteri,1.0,0.998,1.0
+caratteri,nessun taglio,1.0,1.0,1.0

@@ -1,0 +1,19 @@
+{
+  "instructions": "Choose the label that best fits the input according to the criterion. Reply only with JSON containing a string field named \"label\" whose value is exactly one of the labels listed.",
+  "template": "Criterion: {langex}\nLabels: {labels}\nInput: {tau}",
+  "criteria": {
+    "Q4": "the genre that describes the film best"
+  },
+  "labels": {
+    "Q4": {
+      "Q130232": "drama film",
+      "Q93204": "documentary film",
+      "Q369747": "war film",
+      "Q188473": "action film",
+      "Q157443": "comedy film",
+      "Q2484376": "thriller film",
+      "Q200092": "horror film",
+      "Q471839": "science fiction film"
+    }
+  }
+}

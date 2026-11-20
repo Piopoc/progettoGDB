@@ -1,0 +1,15 @@
+,dev
+film,1000.0
+lead_caratteri_mediana,591.0
+lead_caratteri_p90,1556.0
+lead_frasi_mediana,5.0
+lead_frasi_p90,11.0
+lead_token_media,176.8
+tau0_tagliati_a_1200,0.188
+testo_tenuto_prime_1_frasi,0.282
+testo_tenuto_prime_2_frasi,0.512
+testo_tenuto_prime_3_frasi,0.678
+testo_tenuto_prime_5_frasi,0.852
+tau_tagliati_a_300,0.941
+tau_tagliati_a_600,0.538
+tau_tagliati_a_900,0.33

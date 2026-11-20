@@ -1,0 +1,2 @@
+variante,piano,modello,richieste,n_validi,parse_failures,coppie_vere,coppie_vere_tra_i_candidati,tp,fp,fn,precision,recall,f1,f1_fallimenti_come_no,fp_stesso_autore,token_ingresso_reali_medi,token_ingresso_totali,token_uscita_medi,secondi_per_richiesta
+t0,topk k=3,"qwen2.5:3b [json_schema, max_tokens=300]",150,150,0,51,50,45,25,6,0.643,0.882,0.744,0.744,18,391.7,58751,11.7,
