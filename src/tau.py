@@ -7,6 +7,8 @@ Chiavi della configurazione (tutte facoltative; i valori predefiniti riproducono
   use_description        usa description_screened (mai la descrizione grezza)      predefinito true
   use_lead               usa il lead dell'articolo Wikipedia                         predefinito true
   max_chars              taglio sull'INTERA stringa; null = nessun taglio            predefinito 1200
+  max_sentences          tiene solo le prime N frasi del LEAD (titolo e descrizione restano interi);
+                         null = tutte. Si applica prima di max_chars.                predefinito null
   format                 "plain" (frasi di seguito) oppure "labeled" (campi con etichetta)
   normalize_whitespace   sostituisce ogni sequenza di spazi/a capo con uno spazio    predefinito false
   extra_props            {"Film": ["P57", "P495"], "Novel": ["P50"]}: proprietà del grafo da aggiungere.
@@ -24,10 +26,38 @@ DEFAULTS = {
     "use_description": True,
     "use_lead": True,
     "max_chars": 1200,
+    "max_sentences": None,
     "format": "plain",
     "normalize_whitespace": False,
     "extra_props": {},
 }
+
+
+# Divisione in frasi senza dipendenze: un punto (o ! ?) seguito da spazio e da una maiuscola o una cifra chiude
+# una frase, tranne dopo un'abbreviazione nota ("Dr. No", "U.S. Army") o un'iniziale ("J. R. R. Tolkien").
+# Anche un a capo chiude la frase. È deterministica: lo stesso testo dà sempre le stesse frasi.
+_ABBR = {"mr", "mrs", "ms", "dr", "st", "jr", "sr", "vs", "no", "nos", "vol", "inc", "ltd", "co", "corp", "mt",
+         "ft", "gen", "col", "lt", "sgt", "capt", "cmdr", "prof", "rev", "hon", "u.s", "u.k", "u.n", "e.g", "i.e",
+         "etc", "approx", "ca", "c", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov",
+         "dec", "op", "pt", "fig", "ed", "eds", "vol", "dept", "univ", "assn", "bros", "d.c", "l.a"}
+_BOUNDARY = re.compile(r"[.!?][\"”’')\]]*\s+(?=[\"“‘'(\[]?[A-Z0-9])")
+
+
+def split_sentences(text: str) -> list[str]:
+    out = []
+    for para in re.split(r"\n+", text or ""):
+        start = 0
+        for m in _BOUNDARY.finditer(para):
+            last = re.search(r"([A-Za-z.]+)[.!?]?[\"”’')\]]*$", para[start:m.start() + 1])
+            w = last.group(1).rstrip(".").lower() if last else ""
+            if para[m.start()] == "." and (w in _ABBR or re.fullmatch(r"[a-z]", w)):
+                continue
+            out.append(para[start:m.end()].strip())
+            start = m.end()
+        tail = para[start:].strip()
+        if tail:
+            out.append(tail)
+    return [x for x in out if x]
 
 
 def load_cfg(path: str) -> dict:
@@ -87,7 +117,10 @@ class TauBuilder:
                 lab = self.plabel[p]
                 out.append(("extra", lab[:1].upper() + lab[1:], ", ".join(vals)))
         if c["use_lead"]:
-            out.append(("lead", "Text", str(r.lead)))
+            lead = str(r.lead)
+            if c["max_sentences"]:
+                lead = " ".join(split_sentences(lead)[: int(c["max_sentences"])])
+            out.append(("lead", "Text", lead))
         return out
 
     def build(self, qid: str) -> str:

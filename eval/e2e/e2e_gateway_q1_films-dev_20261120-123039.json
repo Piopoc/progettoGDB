@@ -1,0 +1,21 @@
+{
+  "data": "20261120-123039",
+  "repo": "films-dev",
+  "graph_tau": "http://example.org/semop/tau-t0_v1",
+  "langex": "the film deals with the Second World War",
+  "prompt": "prompts/filter_v1.json",
+  "gateway": "http://127.0.0.1:8000",
+  "modello": "local/qwen2.5-coder:3b-unsloth",
+  "run_id": "m1-e2e-q1-20261120-123039",
+  "cache_namespace": "progettogdb",
+  "n": 10,
+  "risposte_non_valide": 0,
+  "secondi": 0.16,
+  "registro_gateway": {
+    "righe_nel_registro": 10,
+    "cache_hit": 10,
+    "chiamate_al_modello": 0,
+    "fallback_parse_ok_false": 0,
+    "errori": 0
+  }
+}

@@ -1,0 +1,11 @@
+qid,film,risposta,verita_chiave_espansa,token_in,token_out,secondi
+Q102754,Dr. No,true,False,339,13,0.07
+Q104144784,Reagan,false,False,260,13,0.01
+Q1043614,Taare Zameen Par,false,False,355,13,0.01
+Q104870521,Assassins,false,False,144,13,0.01
+Q104891260,The Gray Man,false,False,337,13,0.01
+Q104902956,Knocking,false,False,165,13,0.01
+Q10498919,Freud Leaving Home,false,False,168,13,0.01
+Q105043986,We're All Going to the World's Fair,false,False,313,13,0.01
+Q105102351,Great White,false,False,181,13,0.01
+Q105296607,Mediterraneo: The Law of the Sea,false,False,151,13,0.01

@@ -1,33 +1,25 @@
-"""Client sottile per interrogare un modello con risposta JSON.
-
+"""Client del gateway del corso: manda le richieste a POST /v1/responses e legge le risposte.
+Tutte le chiamate al modello del progetto passano da qui (studi di τ, join, prova end-to-end), quindi finiscono
+nella cache e nel registro del gateway: una seconda esecuzione identica non fa richieste al modello, e il registro
+alimenta i file di run. Questo client non ha una cache sua.
 Due forme di risposta:
-  {"answer": true/false}       filtro e join (ask_bool, oppure ask senza choices)
-  {"label": <una di choices>}  classificazione (ask con choices=[...]); una risposta fuori dall'elenco
-                               è una risposta VALIDA ma sbagliata (out_of_set), non un parse failure.
-
-È provvisorio: serve fino alla lezione sul gateway (12 novembre) e ha la stessa idea del gateway:
-una cache su file (stessa richiesta = zero costo) e il conteggio delle richieste vere.
-Le risposte raccolte qui NON finiscono nella cache del gateway.
-
-Backend:
-  local   server OpenAI-compatibile locale   (LOCAL_MODEL_URL, LOCAL_MODEL, LOCAL_MODEL_API_KEY)
-  google  Gemini via endpoint OpenAI-compatibile (GOOGLE_API_KEY, GOOGLE_MODEL)
+  {"answer": true/false}       filtro e join (ask senza choices)
+  {"label": <una di choices>}  classificazione (ask con choices=[...]); una risposta fuori dall'elenco è una
+                               risposta VALIDA ma sbagliata (out_of_set), non un parse failure.
+Un fallback del gateway (parse_ok false) è una risposta NON valida: non diventa mai un "no".
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
 import httpx
 from dotenv import find_dotenv, load_dotenv
 
-GOOGLE_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
 SCHEMA = {"type": "object", "properties": {"answer": {"type": "boolean"}}, "required": ["answer"]}
 
 
@@ -37,123 +29,105 @@ def label_schema(choices: list[str]) -> dict:
 
 
 class LLMClient:
-    def __init__(self, backend: str, cache_path: str = "cache/study_cache.jsonl",
-                 base_url: str | None = None, model: str | None = None, timeout: float = 120):
+    def __init__(self, run_id: str | None = None, model: str | None = None, base_url: str | None = None,
+                 timeout: float = 300):
         load_dotenv(find_dotenv(usecwd=True))
-        self.backend = backend
+        url = (base_url or os.getenv("GATEWAY_URL") or "http://127.0.0.1:8000").rstrip("/")
+        self.base = url[:-3] if url.endswith("/v1") else url
+        self.model = model or os.getenv("GATEWAY_MODEL")
+        if not self.model:
+            raise SystemExit("Manca GATEWAY_MODEL nel .env: il nome della rotta in models.toml del gateway.")
+        self.namespace = os.getenv("GATEWAY_CACHE_NAMESPACE", "progettogdb")
+        self.run_id = run_id or os.getenv("GATEWAY_RUN_ID") or time.strftime("run-%Y%m%d-%H%M%S")
+        self.paid = not self.model.startswith("local/")     # le rotte cloud costano: gli script chiedono --yes
         self.timeout = timeout
-        if backend == "local":
-            self.base = (base_url or os.environ["LOCAL_MODEL_URL"]).rstrip("/")
-            self.model = model or os.environ["LOCAL_MODEL"]
-            self.key = os.getenv("LOCAL_MODEL_API_KEY") or "ollama"            
-            self.thinking = os.getenv("LOCAL_ENABLE_THINKING", "true").lower() != "false"
-            self.max_tokens = int(os.getenv("LOCAL_MAX_TOKENS", "300"))
-            self.format_name = os.getenv("LOCAL_RESPONSE_FORMAT", "json_object")
-            if self.format_name == "json_schema":
-                self.response_format = {"type": "json_schema", "json_schema": {"name": "answer", "schema": SCHEMA}}
-            elif self.format_name == "json_object":
-                self.response_format = {"type": "json_object"}
-            else:
-                raise ValueError("LOCAL_RESPONSE_FORMAT deve essere json_object o json_schema")
-        elif backend == "google":
-            self.base = (base_url or GOOGLE_BASE).rstrip("/")
-            self.model = model or os.environ["GOOGLE_MODEL"]
-            self.key = os.environ["GOOGLE_API_KEY"]
-            self.format_name = "json_schema"
-            self.thinking = True
-            self.max_tokens = 300
-            self.response_format = {"type": "json_schema", "json_schema": {"name": "answer", "schema": SCHEMA}}
-        else:
-            raise ValueError("backend deve essere 'local' o 'google'")
-
-        self.cache_path = Path(cache_path)
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self.requests = 0                                   # richieste al gateway (dalla cache o no)
         self._lock = threading.Lock()
-        self._cache: dict[str, dict] = {}
-        if self.cache_path.exists():
-            for line in self.cache_path.read_text(encoding="utf-8").splitlines():
-                if line.strip():
-                    rec = json.loads(line)
-                    if not rec["value"].get("parse_failure"):   # un fallimento non è una risposta: si richiede
-                        self._cache[rec["key"]] = rec["value"]
-        self.new_requests = 0
 
-    # --- chiave e cache ------------------------------------------------------------------
-    def key_for(self, system: str, user: str, choices: list[str] | None = None) -> str:
-        parts = [self.backend, self.model, system, user, 0]
-        if not self.thinking:
-            parts.append("no-thinking")   # aggiunto solo se spento, così le vecchie risposte in cache restano valide
-        if choices is not None:
-            parts.append(["label", list(choices)])   # idem: le risposte booleane già in cache non cambiano chiave
-        payload = json.dumps(parts, ensure_ascii=False)
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-    def is_cached(self, system: str, user: str, choices: list[str] | None = None) -> bool:
-        return self.key_for(system, user, choices) in self._cache
-
-    def _response_format(self, choices):
-        if choices is None or self.format_name == "json_object":
-            return self.response_format
-        return {"type": "json_schema", "json_schema": {"name": "label", "schema": label_schema(choices)}}
-
-    def build_body(self, system: str, user: str, choices: list[str] | None = None) -> dict:
-        body = {
-            "model": self.model, "temperature": 0, "max_tokens": self.max_tokens, "stream": False,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            "response_format": self._response_format(choices),
+    # --- richiesta ------------------------------------------------------------------------------
+    def body(self, system: str, user: str, choices: list[str] | None = None) -> dict:
+        if choices is None:
+            name, schema = "boolean_answer", {**SCHEMA, "additionalProperties": False}
+        else:
+            name, schema = "label", {**label_schema(choices), "additionalProperties": False}
+        return {
+            "model": self.model, "instructions": system,
+            "input": [{"role": "user", "content": user}],
+            "text": {"format": {"type": "json_schema", "name": name, "strict": True, "schema": schema}},
+            "metadata": {"run_id": self.run_id, "cache_namespace": self.namespace},
+            "temperature": 0,
         }
-        if self.backend == "local":
-            body["seed"] = 0
-            if not self.thinking:
-                body["chat_template_kwargs"] = {"enable_thinking": False}
-        return body
-
-    # --- chiamata --------------------------------------------------------------------------
-    def ask_bool(self, system: str, user: str) -> dict:
-        return self.ask(system, user)
 
     def ask(self, system: str, user: str, choices: list[str] | None = None) -> dict:
-        k = self.key_for(system, user, choices)
-        with self._lock:
-            if k in self._cache:
-                return {**self._cache[k], "cached": True}
-        body = self.build_body(system, user, choices)
-        headers = {"Authorization": f"Bearer {self.key}"}
-        last = None
-        t_start = time.time()
-        for attempt in range(4):
+        body = self.body(system, user, choices)
+        t_start, last, data = time.time(), None, None
+        for attempt in range(5):
             try:
-                r = httpx.post(self.base + "/chat/completions", json=body, headers=headers, timeout=self.timeout)
-                if r.status_code in (429, 500, 502, 503, 504):
-                    raise httpx.HTTPError(f"HTTP {r.status_code}")
-                r.raise_for_status()
-                data = r.json()
-                break
-            except (httpx.HTTPError, ValueError) as e:  # rete, 429/5xx, JSON illeggibile
+                r = httpx.post(self.base + "/v1/responses", json=body, timeout=self.timeout)
+            except httpx.HTTPError as e:            # gateway spento o irraggiungibile
                 last = e
                 time.sleep(2 ** attempt)
+                continue
+            if r.status_code == 429:                # limite locale di concorrenza o tentativi del run
+                last = f"HTTP 429 {r.text[:200]}"
+                if "attempt" in r.text.lower():     # tentativi esauriti per (run_id, modello): inutile riprovare
+                    break
+                time.sleep(2 ** attempt)
+                continue
+            if r.status_code != 200:                # 404 modello, 422 corpo, 502 provider, 503 cache corrotta
+                raise RuntimeError(f"gateway HTTP {r.status_code} su {self.model}: {r.text[:300]}")
+            data = r.json()
+            break
+        if data is None:
+            raise RuntimeError(f"gateway: nessuna risposta da {self.base}/v1/responses ({self.model}): {last}")
+        try:
+            text = data["output"][0]["content"][0]["text"]
+        except (KeyError, IndexError, TypeError):
+            text = None
+        if data.get("parse_ok") is not True:
+            answer, failure = None, True
         else:
-            raise RuntimeError(f"richiesta fallita dopo 4 tentativi verso {self.base}/chat/completions: {last}")
-
-        content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
-        answer, failure = self._parse(content) if choices is None else self._parse_label(content)
-        out_of_set = (not failure and choices is not None and answer not in choices)
-        usage = data.get("usage") or {}
-        finish = ((data.get("choices") or [{}])[0]).get("finish_reason")
-        rec = {"answer": answer, "parse_failure": failure, "out_of_set": out_of_set, "finish_reason": finish,
-               "tokens_in": usage.get("prompt_tokens"), "tokens_out": usage.get("completion_tokens"),
-               "raw": (content or "")[:200], "seconds": round(time.time() - t_start, 2)}
+            answer, failure = self._parse(text) if choices is None else self._parse_label(text)
+        tin, tout = self._usage(data.get("provider_response"))
         with self._lock:
-            self.new_requests += 1
-            if not failure:
-                self._cache[k] = rec
-                with self.cache_path.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps({"key": k, "value": rec}, ensure_ascii=False) + "\n")
-        return {**rec, "cached": False}
+            self.requests += 1
+        return {"answer": answer, "parse_failure": failure,
+                "out_of_set": (not failure and choices is not None and answer not in choices),
+                "error_type": data.get("error_type"), "tokens_in": tin, "tokens_out": tout,
+                "raw": (text or "")[:200], "seconds": round(time.time() - t_start, 2)}
+
+    def ask_many(self, pairs: list[tuple[str, str]], workers: int = 1, label: str = "",
+                 choices: list[str] | None = None) -> list[dict]:
+        done = 0
+
+        def one(p):
+            nonlocal done
+            res = self.ask(*p, choices=choices)
+            done += 1
+            if done % 100 == 0:
+                print(f"  {label} {done}/{len(pairs)}", flush=True)
+            return res
+
+        if workers <= 1:
+            return [one(p) for p in pairs]
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            return list(ex.map(one, pairs))
+
+    # --- lettura della risposta -------------------------------------------------------------------
+    @staticmethod
+    def _usage(prov: dict) -> tuple:
+        """Token dalla risposta grezza del provider: il gateway non li normalizza (li ha il suo registro).
+        Su una risposta dalla cache sono quelli della chiamata originale."""
+        u = (prov or {}).get("usage") or {}
+        if u:
+            return u.get("prompt_tokens") or u.get("input_tokens"), u.get("completion_tokens") or u.get("output_tokens")
+        g = (prov or {}).get("usage_metadata") or (prov or {}).get("usageMetadata") or {}
+        return (g.get("prompt_token_count") or g.get("promptTokenCount"),
+                g.get("candidates_token_count") or g.get("candidatesTokenCount"))
 
     @staticmethod
     def _parse(content):
-        """Una risposta fuori schema è un parse failure: non diventa mai un negativo."""
+        """Filtro e join: serve un booleano nel campo "answer", altrimenti è un parse failure."""
         if not content:
             return None, True
         txt = re.sub(r"^```(?:json)?|```$", "", content.strip(), flags=re.M).strip()
@@ -175,20 +149,3 @@ class LLMClient:
         except (ValueError, AttributeError):
             return None, True
         return (a.strip(), False) if isinstance(a, str) and a.strip() else (None, True)
-
-    def ask_many(self, pairs: list[tuple[str, str]], workers: int = 1, label: str = "",
-                 choices: list[str] | None = None) -> list[dict]:
-        done = 0
-
-        def one(p):
-            nonlocal done
-            res = self.ask(*p, choices=choices)
-            done += 1
-            if done % 100 == 0:
-                print(f"  {label} {done}/{len(pairs)}", flush=True)
-            return res
-
-        if workers <= 1:
-            return [one(p) for p in pairs]
-        with ThreadPoolExecutor(max_workers=workers) as ex:
-            return list(ex.map(one, pairs))

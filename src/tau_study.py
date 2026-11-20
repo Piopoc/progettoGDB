@@ -3,11 +3,10 @@
 Uso (dalla radice del repository):
     # 1. prova senza chiamare il modello: testi, token, un esempio per variante
     python -m src.tau_study --data data/films/dev --dry-run
-    # 2. prova veloce con il modello locale su pochi film
-    python -m src.tau_study --data data/films/dev --backend local --limit 30
-    # 3. run completo (1000 film x varianti)
-    python -m src.tau_study --data data/films/dev --backend local
-    python -m src.tau_study --data data/films/dev --backend google --yes
+    # 2. prova veloce su pochi film (modello: GATEWAY_MODEL nel .env; gateway avviato)
+    python -m src.tau_study --data data/films/dev --limit 30 --run-id prova-q1
+    # 3. run completo (1000 film x varianti); con una rotta cloud serve anche --yes
+    python -m src.tau_study --data data/films/dev --variants t0 s2 s3 --run-id tau-q1 --workers 4
 
 Regole: gira solo sul dev set (rifiuta l'eval); prompt e temperatura sono fissi; le varianti si
 confrontano sugli stessi film, con un bootstrap appaiato. Non si tara nulla sull'eval set.
@@ -29,14 +28,12 @@ from .tau import TauBuilder, load_cfg, token_stats
 
 VARIANTS = ["t0", "t1", "t2", "t3", "t4"]
 
-
 def find_cfg(prompts_dir: Path, name: str) -> Path:
     files = sorted(glob.glob(str(prompts_dir / f"tau_{name}_v*.json")),
                    key=lambda p: int(re.search(r"_v(\d+)\.json$", p).group(1)))
     if not files:
         raise FileNotFoundError(f"nessuna configurazione tau_{name}_v*.json in {prompts_dir}")
     return Path(files[-1])  # l'ultima versione
-
 
 def prf(pred: np.ndarray, truth: np.ndarray):
     tp = int((pred & truth).sum())
@@ -47,14 +44,12 @@ def prf(pred: np.ndarray, truth: np.ndarray):
     f = 2 * p * r / (p + r) if p + r else 0.0
     return tp, fp, fn, p, r, f
 
-
 def f1_vec(pred, truth):
     tp = (pred & truth).sum(axis=-1)
     fp = (pred & ~truth).sum(axis=-1)
     fn = (~pred & truth).sum(axis=-1)
     den = 2 * tp + fp + fn
     return np.where(den > 0, 2 * tp / np.maximum(den, 1), 0.0)
-
 
 def paired_bootstrap(pred_a, pred_b, truth, B=1000, seed=0):
     """Differenza di F1 (b - a) sugli stessi film, con intervallo al 95%."""
@@ -63,20 +58,18 @@ def paired_bootstrap(pred_a, pred_b, truth, B=1000, seed=0):
     d = f1_vec(pred_b[idx], truth[idx]) - f1_vec(pred_a[idx], truth[idx])
     return float(d.mean()), float(np.percentile(d, 2.5)), float(np.percentile(d, 97.5))
 
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
     ap.add_argument("--query", default="Q1", choices=["Q1", "Q2"])
     ap.add_argument("--variants", nargs="+", default=VARIANTS)
-    ap.add_argument("--backend", choices=["local", "google"], default="local")
+    ap.add_argument("--run-id", help="run_id nel registro del gateway (predefinito: GATEWAY_RUN_ID o data e ora)")
     ap.add_argument("--prompts", default="prompts")
     ap.add_argument("--limit", type=int, help="usa solo N film (campione casuale con seme fisso)")
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--yes", action="store_true", help="conferma i run a pagamento")
+    ap.add_argument("--yes", action="store_true", help="conferma i run su una rotta cloud (a pagamento)")
     ap.add_argument("--out", default="eval")
-    ap.add_argument("--cache", default="cache/study_cache.jsonl")
     a = ap.parse_args()
 
     data = Path(a.data)
@@ -139,14 +132,14 @@ def main():
 
     from .llm_client import LLMClient
 
-    client = LLMClient(a.backend, cache_path=a.cache)
+    client = LLMClient(run_id=a.run_id)
     instr = fp["instructions"]
     users = {v: [fp["template"].format(langex=langex, tau=t) for t in texts[v]] for v in a.variants}
-    todo = sum(not client.is_cached(instr, u) for v in a.variants for u in users[v])
-    print(f"Richieste nuove (non in cache): {todo} su {len(a.variants) * len(qids)}")
-    if a.backend == "google" and todo and not a.yes:
+    todo = len(a.variants) * len(qids)
+    print(f"Richieste al gateway: {todo} (run_id {client.run_id}). Quelle già nella sua cache non arrivano al modello.")
+    if client.paid and not a.yes:
         approx_tok = sum(len(u) for v in a.variants for u in users[v]) // 4
-        raise SystemExit(f"Backend a pagamento: circa {approx_tok:,} token in ingresso. Rilancia con --yes per eseguire.")
+        raise SystemExit(f"{client.model} è una rotta a pagamento: circa {approx_tok:,} token in ingresso. Rilancia con --yes per eseguire.")
 
     if truth.sum() < 30:
         print(f"ATTENZIONE: solo {int(truth.sum())} positivi. Con così pochi positivi le differenze tra varianti "
@@ -169,11 +162,11 @@ def main():
         ts = token_stats(texts[v])
         tin = [r["tokens_in"] for r in res if r["tokens_in"] is not None]
         tout = [r["tokens_out"] for r in res if r["tokens_out"] is not None]
-        secs = [r["seconds"] for r in res if not r["cached"] and r.get("seconds") is not None]
+        secs = [r["seconds"] for r in res if r.get("seconds") is not None]   # comprese le risposte dalla cache del gateway
         pv, tv, ev = pred[valid], truth[valid], explicit[valid]
         decisions[v] = np.where(valid, pred, np.nan)
         rows.append({
-            "variante": v, "modello": f"{client.model} [{client.format_name}{'' if client.thinking else ', no-think'}, max_tokens={client.max_tokens}]", "n": len(qids), "n_validi": int(valid.sum()),
+            "variante": v, "modello": client.model, "n": len(qids), "n_validi": int(valid.sum()),
             "parse_failures": pf, "quota_fallimenti": round(pf / len(qids), 3),
             "tp": tp, "fp": fpn, "fn": fn,
             "precision": round(p, 3), "recall": round(r_, 3), "f1": round(f, 3),
@@ -189,8 +182,8 @@ def main():
         if bad:
             fin = {}
             for r in bad:
-                fin[r.get("finish_reason")] = fin.get(r.get("finish_reason"), 0) + 1
-            print(f"  {v}: {pf} risposte non valide su {len(qids)}. Motivo di arresto (finish_reason): {fin}. "
+                fin[r.get("error_type")] = fin.get(r.get("error_type"), 0) + 1
+            print(f"  {v}: {pf} risposte non valide su {len(qids)}. Tipo di errore del gateway (error_type): {fin}. "
                   f"Esempi grezzi: {[r['raw'] for r in bad[:3]]}")
 
     # riferimento economico: filtro per parola chiave sul testo di t0
@@ -214,14 +207,13 @@ def main():
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    tag = f"{a.query.lower()}_{a.backend}"
+    tag = a.query.lower()
     df = pd.DataFrame(rows)
     df.to_csv(out / f"tau_study_{tag}.csv", index=False)
     pd.DataFrame(decisions).to_csv(out / f"tau_study_{tag}_decisioni.csv", index=False)
     pd.set_option("display.width", 250, "display.max_columns", 30)
     print("\n" + df.to_string(index=False))
-    print(f"\nTempo totale: {(time.time() - t_all) / 60:.1f} minuti. Richieste nuove: {client.new_requests}. File: {out / f'tau_study_{tag}.csv'} e ..._decisioni.csv")
-
+    print(f"\nTempo totale: {(time.time() - t_all) / 60:.1f} minuti. Richieste al gateway: {client.requests}. File: {out / f'tau_study_{tag}.csv'} e ..._decisioni.csv")
 
 if __name__ == "__main__":
     main()

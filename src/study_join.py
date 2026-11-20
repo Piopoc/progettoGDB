@@ -11,10 +11,10 @@ Tre usi, dal più economico al più costoso (dalla radice del repository):
 
     # 3. join con il modello
     #    piano di riferimento (nested loop, tutte le 50 x 100 = 5000 coppie: ore in locale)
-    python -m src.study_join --data data/films/dev --query Q6 --plan nested --variants t0 --backend local
+    python -m src.study_join --data data/films/dev --query Q6 --plan nested --variants t0 --run-id q6-nested
     #    piano con blocking (k romanzi per film: 50 x 10 = 500 richieste), confrontato anche con il riferimento
-    python -m src.study_join --data data/films/dev --query Q6 --plan topk --k 10 --variants t0 --backend local \
-        --reference eval/q6_qwen3b/join_q6_nested_local_decisioni.csv
+    python -m src.study_join --data data/films/dev --query Q6 --plan topk --k 10 --variants t0 --run-id q6-topk10 \
+        --reference eval/q6_qwen3b/join_q6_nested_decisioni.csv
 
 Metriche (documento delle query comuni, Q6): precision, recall e F1 contro la chiave e contro il run di
 riferimento. La recall è sempre calcolata su TUTTE le coppie vere, anche quelle perse dal blocking.
@@ -151,15 +151,14 @@ def main():
     ap.add_argument("--blocking-only", action="store_true", help="solo la tabella del blocking, nessuna chiamata al modello")
     ap.add_argument("--embed-model", default=EMBED_MODEL)
     ap.add_argument("--reference", help="file _decisioni.csv di un run nested, per le metriche contro il riferimento")
-    ap.add_argument("--backend", choices=["local", "google"], default="local")
+    ap.add_argument("--run-id", help="run_id nel registro del gateway (predefinito: GATEWAY_RUN_ID o data e ora)")
     ap.add_argument("--prompts", default="prompts")
     ap.add_argument("--prompt-file", default="join_v1.json")
     ap.add_argument("--limit-left", type=int, help="usa solo N film di sinistra (campione con seme fisso); la destra resta intera")
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--yes", action="store_true", help="conferma i run a pagamento")
+    ap.add_argument("--yes", action="store_true", help="conferma i run su una rotta cloud (a pagamento)")
     ap.add_argument("--out", default="eval")
-    ap.add_argument("--cache", default="cache/study_cache.jsonl")
     ap.add_argument("--emb-cache", default="cache/emb")
     a = ap.parse_args()
 
@@ -226,7 +225,7 @@ def main():
     # --- join con il modello -------------------------------------------------------------------------
     from .llm_client import LLMClient
 
-    client = LLMClient(a.backend, cache_path=a.cache)
+    client = LLMClient(run_id=a.run_id)
     instr = jp["instructions"]
     li = {q: i for i, q in enumerate(left)}
     plans = {}
@@ -238,13 +237,13 @@ def main():
         plans[v] = cand
     users = {v: [jp["template"].format(langex=langex, left=texts_l[v][i], right=texts_r[v][j]) for i, j in plans[v]]
              for v in a.variants}
-    todo = sum(not client.is_cached(instr, u) for v in a.variants for u in users[v])
-    print(f"\nRichieste nuove (non in cache): {todo} su {sum(len(u) for u in users.values())}")
-    if a.backend == "google" and todo and not a.yes:
+    todo = sum(len(u) for u in users.values())
+    print(f"\nRichieste al gateway: {todo} (run_id {client.run_id}). Quelle già nella sua cache non arrivano al modello.")
+    if client.paid and not a.yes:
         approx_tok = sum(len(u) for v in a.variants for u in users[v]) // 4
-        raise SystemExit(f"Backend a pagamento: circa {approx_tok:,} token in ingresso. Rilancia con --yes per eseguire.")
-    if a.backend == "local" and todo > 1000:
-        print(f"ATTENZIONE: {todo} richieste in locale. A 2-3 secondi l'una sono circa {todo * 2.5 / 3600:.1f} ore.")
+        raise SystemExit(f"{client.model} è una rotta a pagamento: circa {approx_tok:,} token in ingresso. Rilancia con --yes per eseguire.")
+    if not client.paid and todo > 1000:
+        print(f"ATTENZIONE: {todo} richieste a un modello locale: con 4 workers circa {todo / 40 / 60:.1f} ore.")
 
     ref = None
     if a.reference:
@@ -275,9 +274,9 @@ def main():
         fp_same_author = sum(1 for (l, r) in pred - key if auth.get(r, set()) & true_auth.get(l, set()))
         tin = [r["tokens_in"] for r in res if r["tokens_in"] is not None]
         tout = [r["tokens_out"] for r in res if r["tokens_out"] is not None]
-        secs = [r["seconds"] for r in res if not r["cached"] and r.get("seconds") is not None]
+        secs = [r["seconds"] for r in res if r.get("seconds") is not None]   # comprese le risposte dalla cache del gateway
         row = {"variante": v, "piano": a.plan + (f" k={a.k}" if a.plan == "topk" else ""),
-               "modello": f"{client.model} [{client.format_name}{'' if client.thinking else ', no-think'}, max_tokens={client.max_tokens}]",
+               "modello": client.model,
                "richieste": len(pairs), "n_validi": int(valid.sum()), "parse_failures": int((~valid).sum()),
                "coppie_vere": len(key), "coppie_vere_tra_i_candidati": len(key & set(pairs)),
                "tp": tp, "fp": fp, "fn": fn, "precision": round(p_, 3), "recall": round(r_, 3), "f1": round(f_, 3),
@@ -310,7 +309,7 @@ def main():
                             "dentro_il_rumore": lo <= 0 <= hi})
 
     out.mkdir(parents=True, exist_ok=True)
-    run_tag = f"{tag}_{a.plan}{a.k if a.plan == 'topk' else ''}_{a.backend}"
+    run_tag = f"{tag}_{a.plan}{a.k if a.plan == 'topk' else ''}"
     df = pd.DataFrame(rows)
     df.to_csv(out / f"join_{run_tag}.csv", index=False)
     dec = dec_frames[0]
@@ -319,9 +318,8 @@ def main():
     dec.to_csv(out / f"join_{run_tag}_decisioni.csv", index=False)
     pd.set_option("display.width", 250, "display.max_columns", 40)
     print("\n" + df.to_string(index=False))
-    print(f"\nTempo totale: {(time.time() - t_all) / 60:.1f} minuti. Richieste nuove: {client.new_requests}. "
+    print(f"\nTempo totale: {(time.time() - t_all) / 60:.1f} minuti. Richieste al gateway: {client.requests}. "
           f"File: {out / f'join_{run_tag}.csv'} e ..._decisioni.csv")
-
 
 if __name__ == "__main__":
     main()

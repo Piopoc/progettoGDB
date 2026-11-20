@@ -3,10 +3,10 @@
 Uso (dalla radice del repository):
     # 1. prova senza modello: testi, token, prompt di esempio e riferimento "nome del genere nel testo"
     python -m src.study_q4 --data data/films/dev --dry-run
-    # 2. prova veloce su pochi film
-    python -m src.study_q4 --data data/films/dev --backend local --limit 30 --variants t0
-    # 3. run completo (839 film x varianti)
-    python -m src.study_q4 --data data/films/dev --backend local --variants t0 t7 t9 --out eval/q4_qwen3b
+    # 2. prova veloce su pochi film (modello: GATEWAY_MODEL nel .env; gateway avviato)
+    python -m src.study_q4 --data data/films/dev --limit 30 --variants t0 --run-id prova-q4
+    # 3. run completo (839 film x varianti); con una rotta cloud serve anche --yes
+    python -m src.study_q4 --data data/films/dev --variants t0 s1 s2 --run-id tau-q4 --out eval/tau_q4 --workers 4
 
 Metriche (dal documento delle query comuni, Q4):
   hit rate        su tutti gli input: la risposta è UNA delle etichette vere del film (i film possono averne più d'una)
@@ -91,15 +91,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
     ap.add_argument("--variants", nargs="+", default=["t0"])
-    ap.add_argument("--backend", choices=["local", "google"], default="local")
+    ap.add_argument("--run-id", help="run_id nel registro del gateway (predefinito: GATEWAY_RUN_ID o data e ora)")
     ap.add_argument("--prompts", default="prompts")
     ap.add_argument("--prompt-file", default="classify_v1.json")
     ap.add_argument("--limit", type=int, help="usa solo N film (campione casuale con seme fisso)")
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--yes", action="store_true", help="conferma i run a pagamento")
+    ap.add_argument("--yes", action="store_true", help="conferma i run su una rotta cloud (a pagamento)")
     ap.add_argument("--out", default="eval")
-    ap.add_argument("--cache", default="cache/study_cache.jsonl")
     a = ap.parse_args()
 
     data = Path(a.data)
@@ -170,12 +169,12 @@ def main():
 
     from .llm_client import LLMClient
 
-    client = LLMClient(a.backend, cache_path=a.cache)
-    todo = sum(not client.is_cached(instr, u, names) for v in a.variants for u in users[v])
-    print(f"Richieste nuove (non in cache): {todo} su {len(a.variants) * len(qids)}")
-    if a.backend == "google" and todo and not a.yes:
+    client = LLMClient(run_id=a.run_id)
+    todo = len(a.variants) * len(qids)
+    print(f"Richieste al gateway: {todo} (run_id {client.run_id}). Quelle già nella sua cache non arrivano al modello.")
+    if client.paid and not a.yes:
         approx_tok = sum(len(u) for v in a.variants for u in users[v]) // 4
-        raise SystemExit(f"Backend a pagamento: circa {approx_tok:,} token in ingresso. Rilancia con --yes per eseguire.")
+        raise SystemExit(f"{client.model} è una rotta a pagamento: circa {approx_tok:,} token in ingresso. Rilancia con --yes per eseguire.")
 
     t_all = time.time()
     preds, valids = {}, {}
@@ -189,10 +188,10 @@ def main():
         ts = token_stats(texts[v])
         tin = [r["tokens_in"] for r in res if r["tokens_in"] is not None]
         tout = [r["tokens_out"] for r in res if r["tokens_out"] is not None]
-        secs = [r["seconds"] for r in res if not r["cached"] and r.get("seconds") is not None]
+        secs = [r["seconds"] for r in res if r.get("seconds") is not None]   # comprese le risposte dalla cache del gateway
         rows.append({
             "variante": v,
-            "modello": f"{client.model} [{client.format_name}{'' if client.thinking else ', no-think'}, max_tokens={client.max_tokens}]",
+            "modello": client.model,
             "n": len(qids), "n_validi": int(valid.sum()), "parse_failures": int((~valid).sum()),
             "fuori_insieme": oos, **score(pred_q, valid),
             "token_tau_medi": round(ts["mean"], 1), "token_tau_p90": round(ts["p90"]),
@@ -229,7 +228,7 @@ def main():
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    tag = f"q4_{a.backend}"
+    tag = "q4"
     df = pd.DataFrame(rows)
     df.to_csv(out / f"tau_study_{tag}.csv", index=False)
     pd.DataFrame(per_class).to_csv(out / f"tau_study_{tag}_per_classe.csv", index=False)
@@ -238,9 +237,8 @@ def main():
     print("\n" + df.to_string(index=False))
     print("\nPer classe (film a etichetta singola):")
     print(pd.DataFrame(per_class).to_string(index=False))
-    print(f"\nTempo totale: {(time.time() - t_all) / 60:.1f} minuti. Richieste nuove: {client.new_requests}. "
+    print(f"\nTempo totale: {(time.time() - t_all) / 60:.1f} minuti. Richieste al gateway: {client.requests}. "
           f"File in {out}: tau_study_{tag}.csv, ..._per_classe.csv, ..._decisioni.csv")
-
 
 if __name__ == "__main__":
     main()
